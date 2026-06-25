@@ -1,0 +1,3 @@
+C:/Users/SyferX/Documents/Projects/Windows 11 Debloat/build/CMakeFiles/Debloat.dir
+C:/Users/SyferX/Documents/Projects/Windows 11 Debloat/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/SyferX/Documents/Projects/Windows 11 Debloat/build/CMakeFiles/ZERO_CHECK.dir
