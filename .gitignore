@@ -1,0 +1,20 @@
+# Build output
+build/
+
+# Pre-built executables
+*.exe
+*.exe.config
+
+# HTML (hosted separately)
+*.html
+
+# Visual Studio / CMake cache
+CMakeCache.txt
+CMakeFiles/
+*.vcxproj.user
+.vs/
+out/
+
+# OS junk
+Thumbs.db
+desktop.ini

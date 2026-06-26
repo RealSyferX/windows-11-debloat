@@ -35,6 +35,14 @@ const std::vector<BloatwareApp>& AppxManager::GetBloatwareList() {
         { L"MicrosoftWindows.CrossDevice",           "Cross Device Experience" },
         { L"Clipchamp.Clipchamp",                    "Clipchamp" },
         { L"Microsoft.Teams",                        "Microsoft Teams" },
+        { L"Microsoft.WindowsCommunicationsApps",    "Mail & Calendar" },
+        { L"Microsoft.People",                       "People" },
+        { L"Microsoft.WindowsSoundRecorder",         "Sound Recorder" },
+        { L"Microsoft.BingFoodAndDrink",             "Bing Food & Drink" },
+        { L"Microsoft.BingHealthAndFitness",         "Bing Health & Fitness" },
+        { L"Microsoft.BingTravel",                   "Bing Travel" },
+        { L"Microsoft.WindowsReadingList",           "Reading List" },
+        { L"Microsoft.NetworkSpeedTest",             "Network Speed Test" },
     };
     return apps;
 }

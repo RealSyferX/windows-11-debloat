@@ -16,6 +16,15 @@
     <ClCompile Include="C:\Users\SyferX\Documents\Projects\Windows 11 Debloat\src\TelemetryManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\SyferX\Documents\Projects\Windows 11 Debloat\src\ScheduledTaskManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\SyferX\Documents\Projects\Windows 11 Debloat\src\HostsManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\SyferX\Documents\Projects\Windows 11 Debloat\src\PerformanceManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\SyferX\Documents\Projects\Windows 11 Debloat\CMakeLists.txt" />

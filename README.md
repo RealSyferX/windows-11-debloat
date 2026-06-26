@@ -1,10 +1,10 @@
 # Windows 11 Debloat & Anti-Spyware
 
-**Strip out Microsoft's bloatware, kill telemetry services, and lock down your privacy — in one click.**
+**Strip out Microsoft's bloatware, kill telemetry services, block telemetry domains, and lock down your privacy — in one click.**
 
 A standalone C++ tool. No background processes. No setup. No telemetry of its own. Just a clean executable that does its job and exits.
 
-&rarr; **[win.syferx.net](https://win.syferx.net)**
+&rarr; **[win.syferx.net](https://win.syferx.net)** &middot; **[github.com/RealSyferX](https://github.com/RealSyferX/)**
 
 ---
 
@@ -12,9 +12,12 @@ A standalone C++ tool. No background processes. No setup. No telemetry of its ow
 
 | | Count | Details |
 |---|---|---|
-| **Apps Removed** | 31 | Bing, Copilot, Solitaire, Clipchamp, Teams, Outlook, Widgets, Cortana, Sticky Notes, Phone Link, and more |
-| **Services Disabled** | 10 | DiagTrack (telemetry), Error Reporting, WAP Push, Insider telemetry, Compatibility Assistant, etc. |
-| **Registry Tweaks** | 33+ | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, activity history off |
+| **Apps Removed** | 38 | Bing, Copilot, Solitaire, Clipchamp, Teams, Outlook, Widgets, Cortana, Mail & Calendar, People, and more |
+| **Services Disabled** | 20 | DiagTrack (telemetry), Error Reporting, WAP Push, Xbox services, Remote Registry, Parental Controls, etc. |
+| **Scheduled Tasks** | 17 | Compatibility Appraiser, CEIP, WER queue, Maps, Feedback, Disk Diagnostics, Power Efficiency |
+| **Registry Tweaks** | 48+ | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, dark mode, background apps off, Copilot off, fast startup off |
+| **Hosts Blocked** | 29 | Telemetry domains blocked at DNS level (vortex.data.microsoft.com, watson.telemetry.microsoft.com, etc.) |
+| **Performance** | 6 | Disable hibernation, disable fast startup, High Performance power plan, clean temp/WU cache/WinSxS |
 | **OneDrive** | Nuked | Uninstalled, folders cleaned, startup removed, sync blocked by policy |
 
 Provisioned packages are also stripped — so removed apps **don't come back** after Windows updates.
@@ -39,20 +42,23 @@ Output: `build\Release\Debloat.exe`
 ## Usage
 
 1. Run `Debloat.exe` as administrator (UAC auto-prompts)
-2. Press **6** to create a System Restore Point
-3. Press **8** to RUN ALL — or pick individual options 1–5
+2. Press **9** to create a System Restore Point
+3. Press **11** to RUN ALL — or pick individual options 1–8
 4. Reboot
 
 ```
-  1) Remove bloatware apps (UWP/MSIX)
-  2) Remove OneDrive
-  3) Disable telemetry services
-  4) Delete telemetry services  (aggressive)
-  5) Apply telemetry registry tweaks
-  6) Create System Restore Point
-  7) List all targets (preview)
-  8) RUN ALL  (apps + OneDrive + disable services + registry)
-  0) Exit
+   1) Remove bloatware apps (UWP/MSIX)
+   2) Remove OneDrive
+   3) Disable telemetry services
+   4) Delete telemetry services  (aggressive)
+   5) Apply telemetry & privacy registry tweaks
+   6) Disable scheduled telemetry tasks
+   7) Block telemetry domains (hosts file)
+   8) Performance tweaks (power, cleanup)
+   9) Create System Restore Point
+  10) List all targets (preview)
+  11) RUN ALL  (everything)
+   0) Exit
 ```
 
 ## What Stays Untouched
@@ -61,7 +67,7 @@ This tool is surgical. It does **not** touch:
 
 - Microsoft Edge
 - Windows Defender / Security
-- Windows Update
+- Windows Update (the service — we only clean its download cache)
 - NVIDIA / AMD / Realtek drivers
 - Bluetooth, WiFi, networking
 - Your personal files
@@ -72,29 +78,39 @@ This tool is surgical. It does **not** touch:
 
 | Without Debloat | With Debloat |
 |---|---|
-| 30+ bloatware apps pre-installed | Apps removed — won't reinstall |
+| 38+ bloatware apps pre-installed | Apps removed — won't reinstall |
 | DiagTrack sending telemetry to Microsoft | Service stopped & disabled |
+| 17 scheduled tasks collecting telemetry | All disabled |
+| 29 telemetry domains reachable | Blocked in hosts file |
 | Advertising ID tracking you | Turned off system-wide |
 | Bing results cluttering Start Menu | Clean local search only |
 | Cortana & cloud search active | Disabled |
+| Copilot button on taskbar | Hidden & disabled |
 | OneDrive syncing in background | Uninstalled & blocked |
 | Wi-Fi Sense sharing your network | Disabled |
 | Input personalization collecting typing | Disabled |
-| ~10 services wasting CPU & RAM | Zero overhead |
+| Background apps running | Disabled globally |
+| Light mode default | Dark mode enabled |
+| Hibernation wasting GBs of disk | Disabled |
+| ~20 services wasting CPU & RAM | Zero overhead |
+| WinSxS bloat accumulating | Component store cleaned |
 
 ## Tech
 
 - C++17, Win32 API
 - CMake build system
 - UAC manifest (requireAdministrator)
-- Services managed via SCM API
+- Services managed via SCM API (`OpenSCManager` / `ChangeServiceConfig`)
 - Apps removed via PowerShell `Remove-AppxPackage` + `Remove-AppxProvisionedPackage`
+- Scheduled tasks disabled via PowerShell `Disable-ScheduledTask`
+- Hosts file edited directly (idempotent — marker comment prevents duplicates)
 - Registry tweaks via `RegCreateKeyExW` / `RegSetValueExW`
+- Performance via `powercfg`, `DISM /StartComponentCleanup /ResetBase`
 
 ## Disclaimer
 
-This tool modifies system services, registry, and installed applications. **Always create a System Restore Point before running.** Use at your own risk. Not affiliated with Microsoft.
+This tool modifies system services, registry, hosts file, and installed applications. **Always create a System Restore Point before running.** Use at your own risk. Not affiliated with Microsoft.
 
 ---
 
-Built by **[RealSyferX](https://win.syferx.net)** &middot; **[win.syferx.net](https://win.syferx.net)**
+Built by **[RealSyferX](https://github.com/RealSyferX/)** &middot; **[win.syferx.net](https://win.syferx.net)**

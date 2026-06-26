@@ -126,6 +126,54 @@ const std::vector<RegistryTweak>& TelemetryManager::GetRegistryTweaks() {
         { HKEY_LOCAL_MACHINE, L"SOFTWARE\\Policies\\Microsoft\\Windows\\OneDrive",
           L"DisableFileSyncNGSC", REG_TWEAK_DWORD, 1, L"",
           "Disable OneDrive sync (prevent reinstall/re-enable)" },
+
+        /* ---- Explorer & UI ---- */
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+          L"HideFileExt", REG_TWEAK_DWORD, 0, L"",
+          "Show file extensions in Explorer" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+          L"ShowCopilotButton", REG_TWEAK_DWORD, 0, L"",
+          "Hide Copilot button from taskbar" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+          L"TaskbarDa", REG_TWEAK_DWORD, 0, L"",
+          "Disable widgets panel on taskbar" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+          L"TaskbarMn", REG_TWEAK_DWORD, 0, L"",
+          "Disable Meet Now on taskbar" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search",
+          L"SearchboxTaskbarMode", REG_TWEAK_DWORD, 0, L"",
+          "Hide search box on taskbar" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Feeds",
+          L"ShellFeedsTaskbarViewMode", REG_TWEAK_DWORD, 2, L"",
+          "Disable news/feeds on taskbar" },
+
+        /* ---- Copilot policy ---- */
+        { HKEY_LOCAL_MACHINE, L"SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsCopilot",
+          L"TurnOffWindowsCopilot", REG_TWEAK_DWORD, 1, L"",
+          "Disable Windows Copilot (system-wide)" },
+
+        /* ---- Dark mode ---- */
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+          L"AppsUseLightTheme", REG_TWEAK_DWORD, 0, L"",
+          "Dark mode for apps" },
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+          L"SystemUsesLightTheme", REG_TWEAK_DWORD, 0, L"",
+          "Dark mode for system" },
+
+        /* ---- Background apps ---- */
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications",
+          L"GlobalUserDisabled", REG_TWEAK_DWORD, 1, L"",
+          "Disable background apps globally" },
+
+        /* ---- Desktop icons ---- */
+        { HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\HideDesktopIcons\\NewStartPanel",
+          L"{20D04FE0-3AEA-1069-A2D8-08002B30309D}", REG_TWEAK_DWORD, 0, L"",
+          "Show This PC on desktop" },
+
+        /* ---- Fast startup ---- */
+        { HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power",
+          L"HiberbootEnabled", REG_TWEAK_DWORD, 0, L"",
+          "Disable fast startup (fixes dual-boot/driver issues)" },
     };
     return t;
 }

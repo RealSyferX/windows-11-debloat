@@ -15,6 +15,9 @@ add_executable(Debloat
     src/AppxManager.cpp
     src/ServiceManager.cpp
     src/TelemetryManager.cpp
+    src/ScheduledTaskManager.cpp
+    src/HostsManager.cpp
+    src/PerformanceManager.cpp
 )
 
 target_include_directories(Debloat PRIVATE src)
