@@ -497,7 +497,15 @@ void LogAction(const std::string& action, const std::string& detail) {
         tmp.close();
 
         // Atomically replace the target with the fully-written temp file.
-        if (!MoveFileExW(tmpPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        // MOVEFILE_REPLACE_EXISTING : overwrite the target atomically.
+        // MOVEFILE_WRITE_THROUGH   : the rename does not return until the
+        //   change is flushed to disk. Backup files are read back during
+        //   Revert operations, so their durability is critical for the
+        //   revert safety net — a power loss right after the rename returns
+        //   must not lose the backup (otherwise Revert has nothing to
+        //   restore from).
+        if (!MoveFileExW(tmpPath.c_str(), path.c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
             PrintError("WriteBackupAtomic: MoveFileExW failed (GLE=" +
                 std::to_string(GetLastError()) + ")");
             DeleteFileW(tmpPath.c_str());
