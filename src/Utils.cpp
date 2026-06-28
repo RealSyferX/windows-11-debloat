@@ -461,92 +461,92 @@ void LogAction(const std::string& action, const std::string& detail) {
     log << "\n" << std::flush;   // flush so entries survive a crash mid-operation
 }
 
-    std::wstring EscapePsSingleQuote(const std::wstring& s) {
-        std::wstring out;
-        out.reserve(s.size() + 4);
-        for (wchar_t c : s) {
-            if (c == L'\'') out += L"''";
-            else            out += c;
-        }
-        return out;
+std::wstring EscapePsSingleQuote(const std::wstring& s) {
+    std::wstring out;
+    out.reserve(s.size() + 4);
+    for (wchar_t c : s) {
+        if (c == L'\'') out += L"''";
+        else            out += c;
+    }
+    return out;
+}
+
+bool WriteBackupAtomic(const std::wstring& path,
+                       const std::function<bool(std::ofstream&)>& writer) {
+    // Construct a temp path in the same directory so the rename is atomic
+    // (same volume). If the process crashes mid-write, the temp file is
+    // left behind but the original backup is untouched.
+    std::wstring tmpPath = path + L".tmp";
+
+    std::ofstream tmp(tmpPath, std::ios::binary | std::ios::trunc);
+    if (!tmp.is_open()) {
+        PrintWarning("WriteBackupAtomic: could not create temp file: " +
+            WideToString(tmpPath));
+        return false;
     }
 
-    bool WriteBackupAtomic(const std::wstring& path,
-                           const std::function<bool(std::ofstream&)>& writer) {
-        // Construct a temp path in the same directory so the rename is atomic
-        // (same volume). If the process crashes mid-write, the temp file is
-        // left behind but the original backup is untouched.
-        std::wstring tmpPath = path + L".tmp";
-
-        std::ofstream tmp(tmpPath, std::ios::binary | std::ios::trunc);
-        if (!tmp.is_open()) {
-            PrintWarning("WriteBackupAtomic: could not create temp file: " +
-                WideToString(tmpPath));
-            return false;
-        }
-
-        // Let the caller populate the temp file. If the writer returns false,
-        // the write is considered failed — clean up and bail.
-        if (!writer(tmp)) {
-            tmp.close();
-            DeleteFileW(tmpPath.c_str());
-            return false;
-        }
-
-        tmp.flush();
+    // Let the caller populate the temp file. If the writer returns false,
+    // the write is considered failed — clean up and bail.
+    if (!writer(tmp)) {
         tmp.close();
-
-        // Atomically replace the target with the fully-written temp file.
-        // MOVEFILE_REPLACE_EXISTING : overwrite the target atomically.
-        // MOVEFILE_WRITE_THROUGH   : the rename does not return until the
-        //   change is flushed to disk. Backup files are read back during
-        //   Revert operations, so their durability is critical for the
-        //   revert safety net — a power loss right after the rename returns
-        //   must not lose the backup (otherwise Revert has nothing to
-        //   restore from).
-        if (!MoveFileExW(tmpPath.c_str(), path.c_str(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            PrintError("WriteBackupAtomic: MoveFileExW failed (GLE=" +
-                std::to_string(GetLastError()) + ")");
-            DeleteFileW(tmpPath.c_str());
-            return false;
-        }
-
-        return true;
+        DeleteFileW(tmpPath.c_str());
+        return false;
     }
 
-    bool WriteFileAtomic(const std::wstring& path, const std::string& content) {
-        // Construct a temp path in the same directory so the rename is atomic
-        // (same volume). If the process crashes mid-write, the temp file is
-        // left behind but the original file is untouched. This is the
-        // crash-safe write path used for the hosts file — arguably the most
-        // critical system file the tool modifies — so it must never leave the
-        // target truncated/corrupt on a partial write.
-        std::wstring tmpPath = path + L".tmp";
+    tmp.flush();
+    tmp.close();
 
-        std::ofstream tmp(tmpPath, std::ios::binary | std::ios::trunc);
-        if (!tmp.is_open()) {
-            PrintError("Failed to create temporary file for atomic write");
-            return false;
-        }
-
-        tmp << content;
-        tmp.flush();
-        tmp.close();
-
-        // MOVEFILE_REPLACE_EXISTING : overwrite the target atomically.
-        // MOVEFILE_WRITE_THROUGH   : the rename does not return until the
-        //   change is flushed to disk, so once we report success the new
-        //   content is durable (as durable as the filesystem allows).
-        if (!MoveFileExW(tmpPath.c_str(), path.c_str(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            PrintError("WriteFileAtomic: MoveFileExW failed (GLE=" +
-                std::to_string(GetLastError()) + ")");
-            DeleteFileW(tmpPath.c_str());
-            return false;
-        }
-
-        return true;
+    // Atomically replace the target with the fully-written temp file.
+    // MOVEFILE_REPLACE_EXISTING : overwrite the target atomically.
+    // MOVEFILE_WRITE_THROUGH   : the rename does not return until the
+    //   change is flushed to disk. Backup files are read back during
+    //   Revert operations, so their durability is critical for the
+    //   revert safety net — a power loss right after the rename returns
+    //   must not lose the backup (otherwise Revert has nothing to
+    //   restore from).
+    if (!MoveFileExW(tmpPath.c_str(), path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        PrintError("WriteBackupAtomic: MoveFileExW failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        DeleteFileW(tmpPath.c_str());
+        return false;
     }
+
+    return true;
+}
+
+bool WriteFileAtomic(const std::wstring& path, const std::string& content) {
+    // Construct a temp path in the same directory so the rename is atomic
+    // (same volume). If the process crashes mid-write, the temp file is
+    // left behind but the original file is untouched. This is the
+    // crash-safe write path used for the hosts file — arguably the most
+    // critical system file the tool modifies — so it must never leave the
+    // target truncated/corrupt on a partial write.
+    std::wstring tmpPath = path + L".tmp";
+
+    std::ofstream tmp(tmpPath, std::ios::binary | std::ios::trunc);
+    if (!tmp.is_open()) {
+        PrintError("Failed to create temporary file for atomic write");
+        return false;
+    }
+
+    tmp << content;
+    tmp.flush();
+    tmp.close();
+
+    // MOVEFILE_REPLACE_EXISTING : overwrite the target atomically.
+    // MOVEFILE_WRITE_THROUGH   : the rename does not return until the
+    //   change is flushed to disk, so once we report success the new
+    //   content is durable (as durable as the filesystem allows).
+    if (!MoveFileExW(tmpPath.c_str(), path.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        PrintError("WriteFileAtomic: MoveFileExW failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        DeleteFileW(tmpPath.c_str());
+        return false;
+    }
+
+    return true;
+}
 
 } // namespace Utils
