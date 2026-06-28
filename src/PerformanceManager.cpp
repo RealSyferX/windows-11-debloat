@@ -210,7 +210,8 @@ void PerformanceManager::ApplyAll() {
 
         L"Write-Host 'All performance tweaks applied.'\n";
 
-    auto r = Utils::RunPowerShell(script, 900000);  // 15 minutes for DISM
+    Utils::PrintInfo("  (this may take several minutes...)");
+    auto r = Utils::RunPowerShell(script, 900000, true);  // 15 minutes for DISM
     Utils::PrintPsResult(r,
         "Performance tweaks & disk cleanup complete.",
         "PowerShell failed to execute -- changes may not have applied.");

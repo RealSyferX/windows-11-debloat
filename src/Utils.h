@@ -32,7 +32,8 @@ namespace Utils {
     // timeout/launch failure.
     // timeoutMs: max milliseconds to wait (default 120000 = 2 minutes).
     PowerShellResult RunPowerShell(const std::wstring& script,
-                                   DWORD timeoutMs = 120000);
+                                   DWORD timeoutMs = 120000,
+                                   bool showProgress = false);
     void SetColor(WORD attr);
     void PrintInfo(const std::string& msg);
     void PrintSuccess(const std::string& msg);

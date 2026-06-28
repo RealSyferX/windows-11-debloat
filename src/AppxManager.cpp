@@ -91,7 +91,7 @@ void AppxManager::RemoveAll() {
         L"}\n"
         L"Write-Host \"`nApp removal complete.\"\n";
 
-    auto r = Utils::RunPowerShell(script);
+    auto r = Utils::RunPowerShell(script, 120000, true);
     Utils::PrintPsResult(r,
         "Bloatware app removal finished.",
         "PowerShell failed to execute — changes may not have applied.");

@@ -51,7 +51,8 @@ std::string WideToString(const std::wstring& ws) {
 }
 
 PowerShellResult RunPowerShell(const std::wstring& script,
-                                DWORD timeoutMs) {
+                                DWORD timeoutMs,
+                                bool showProgress) {
     wchar_t tempDir[MAX_PATH];
     if (GetTempPathW(MAX_PATH, tempDir) == 0)
         return { false, "" };
@@ -166,11 +167,43 @@ PowerShellResult RunPowerShell(const std::wstring& script,
         }
     };
 
+    // --- Optional console spinner for long-running operations ----------------
+    // When showProgress is true, a rotating spinner is printed to std::cout
+    // (the console) after 3 seconds of no new pipe output, so the user can
+    // see the tool is still alive during DISM /ResetBase or appx removal.
+    // The spinner writes ONLY to std::cout — never to rawBytes — so the
+    // captured output (r.out) is never corrupted.
+    static const char spinner[] = "|/-\\";
+    int spinnerIdx = 0;
+    DWORD msSinceLastOutput = 0;
+    const DWORD spinnerThresholdMs = 3000;
+    bool spinnerActive = false;
+
     while (true) {
+        size_t prevSize = rawBytes.size();
         drainPipe();
 
         DWORD waitResult = WaitForSingleObject(pi.hProcess, pollMs);
         elapsed += pollMs;
+
+        // Spinner: only after spinnerThresholdMs of no new pipe output.
+        if (showProgress) {
+            bool newOutput = (rawBytes.size() > prevSize);
+            if (newOutput) {
+                msSinceLastOutput = 0;
+                if (spinnerActive) {
+                    std::cout << "   \r" << std::flush;
+                    spinnerActive = false;
+                }
+            } else {
+                msSinceLastOutput += pollMs;
+            }
+            if (msSinceLastOutput >= spinnerThresholdMs) {
+                std::cout << spinner[spinnerIdx] << "\r" << std::flush;
+                spinnerIdx = (spinnerIdx + 1) % 4;
+                spinnerActive = true;
+            }
+        }
 
         if (waitResult == WAIT_OBJECT_0) {
             // Process exited — final drain to capture any trailing output
@@ -188,6 +221,12 @@ PowerShellResult RunPowerShell(const std::wstring& script,
             drainPipe();   // grab whatever was buffered before the kill
             break;
         }
+    }
+
+    // Clear the spinner line so it doesn't leave a stray character on the
+    // console before subsequent output (e.g. PrintPsResult).
+    if (spinnerActive) {
+        std::cout << "   \r" << std::flush;
     }
 
     CloseHandle(pi.hProcess);
