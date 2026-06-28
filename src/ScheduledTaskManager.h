@@ -14,4 +14,11 @@ public:
     static void List();
     static void DisableAll();
     static void EnableAll();
+
+private:
+    // Shared implementation for DisableAll/EnableAll. Builds the $tasks array,
+    // runs the named cmdlet (Enable/Disable-ScheduledTask) over each entry, and
+    // prints the result. `enable` selects the cmdlet and the user-facing
+    // messages.
+    static void SetTaskState(bool enable);
 };
