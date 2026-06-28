@@ -77,4 +77,10 @@ namespace Utils {
     // Returns true on success, false on failure (logs a warning).
     bool WriteBackupAtomic(const std::wstring& path,
                            const std::function<bool(std::ofstream&)>& writer);
+
+    // Writes content to a file atomically: writes to a .tmp file in the same
+    // directory, flushes/closes, then renames over the target via MoveFileExW.
+    // If the process crashes mid-write, the original file is preserved.
+    // Returns true on success, false on failure (logs error via PrintError).
+    bool WriteFileAtomic(const std::wstring& path, const std::string& content);
 }

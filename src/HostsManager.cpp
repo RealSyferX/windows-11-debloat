@@ -93,14 +93,15 @@ void HostsManager::Apply() {
         block << "0.0.0.0 " << Utils::WideToString(d) << "\n";
     block << "# ===== End RealSyferX Debloat =====\n";
 
-    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::app);
-    if (!fout.is_open()) {
-        Utils::PrintError("Failed to open hosts file for writing.");
+    // Build the full new content in memory, then write it atomically: the
+    // write goes to a .tmp file in the same directory and is renamed over the
+    // target via MoveFileExW. If the process crashes mid-write, the original
+    // hosts file is preserved intact rather than left truncated/corrupt.
+    std::string newContent = content + block.str();
+    if (!Utils::WriteFileAtomic(hostsPath, newContent)) {
+        Utils::PrintError("Failed to write hosts file.");
         return;
     }
-    fout << block.str();
-    fout.flush();
-    fout.close();
 
     std::cout << "  [OK] Blocked " << GetBlockedDomains().size()
               << " telemetry domains in hosts file.\n";
@@ -135,14 +136,17 @@ void HostsManager::Revert() {
         return;
     }
 
-    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::trunc);
-    if (!fout.is_open()) {
-        Utils::PrintError("Failed to open hosts file for writing.");
+    // Write the result atomically: the new content goes to a .tmp file and is
+    // renamed over the hosts file via MoveFileExW. The previous Revert() opened
+    // the hosts file with std::ios::trunc and rewrote it in place — if the
+    // process crashed, lost power, or the write partially failed mid-stream,
+    // the hosts file was left truncated/corrupt, breaking DNS resolution
+    // system-wide. The atomic rename guarantees the original file is either
+    // fully replaced or left completely untouched.
+    if (!Utils::WriteFileAtomic(hostsPath, *result)) {
+        Utils::PrintError("Failed to write hosts file.");
         return;
     }
-    fout << *result;
-    fout.flush();
-    fout.close();
 
     std::cout << "  [OK] Hosts block reverted.\n";
     Utils::LogAction("HOSTS", "Reverted telemetry block");
