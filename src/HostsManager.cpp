@@ -95,3 +95,63 @@ void HostsManager::Apply() {
 
     Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
 }
+
+void HostsManager::Revert() {
+    Utils::PrintHeader("Reverting telemetry hosts block...");
+
+    // Read the hosts file as raw bytes (binary) — consistent with Apply().
+    std::ifstream fin(HOSTS_PATH, std::ios::binary);
+    if (!fin) {
+        Utils::PrintError("Could not open hosts file for reading.");
+        return;
+    }
+    std::string content((std::istreambuf_iterator<char>(fin)),
+                         std::istreambuf_iterator<char>());
+    fin.close();
+
+    static const char* END_MARKER = "# ===== End RealSyferX Debloat =====";
+
+    size_t start = content.find(MARKER);
+    size_t end   = content.find(END_MARKER);
+
+    if (start == std::string::npos && end == std::string::npos) {
+        std::cout << "  [--] No block found — nothing to revert.\n";
+        return;
+    }
+
+    if (start != std::string::npos && end == std::string::npos) {
+        // Truncated block — no end marker. Erase from start marker to EOF.
+        Utils::PrintWarning("End marker missing — block appears truncated. Removing from start marker to EOF.");
+        content.erase(start);
+    } else {
+        // Both markers found — erase from start marker through the end of
+        // the end-marker line (including its trailing newline).
+        size_t endLineEnd = end + std::string(END_MARKER).size();
+        if (endLineEnd < content.size() && content[endLineEnd] == '\n')
+            endLineEnd += 1;
+
+        // Also remove the preceding "\n\n" that Apply() prepended to the
+        // block, so no stray blank lines are left behind.
+        size_t removeStart = start;
+        if (removeStart >= 2 &&
+            content[removeStart - 1] == '\n' &&
+            content[removeStart - 2] == '\n')
+            removeStart -= 2;
+
+        content.erase(removeStart, endLineEnd - removeStart);
+    }
+
+    std::ofstream fout(HOSTS_PATH, std::ios::binary | std::ios::trunc);
+    if (!fout.is_open()) {
+        Utils::PrintError("Failed to open hosts file for writing.");
+        return;
+    }
+    fout << content;
+    fout.flush();
+    fout.close();
+
+    std::cout << "  [OK] Hosts block reverted.\n";
+    Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
+
+    Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+}

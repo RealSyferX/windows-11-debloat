@@ -76,3 +76,28 @@ void ScheduledTaskManager::DisableAll() {
     if (!out.empty()) std::cout << out;
     Utils::PrintSuccess("Scheduled telemetry tasks disabled.");
 }
+
+void ScheduledTaskManager::EnableAll() {
+    Utils::PrintHeader("Re-enabling scheduled telemetry tasks...");
+    const auto& tasks = GetTasks();
+
+    std::wstring script = L"$ErrorActionPreference = 'SilentlyContinue'\n$tasks = @(\n";
+    for (size_t i = 0; i < tasks.size(); i++) {
+        script += L"    @{Name='" + tasks[i].name + L"';Path='" + tasks[i].path + L"';Desc='"
+            + Utils::StringToWide(tasks[i].description) + L"'}";
+        if (i + 1 < tasks.size()) script += L",";
+        script += L"\n";
+    }
+    script +=
+        L")\n"
+        L"foreach ($t in $tasks) {\n"
+        L"    $r = Enable-ScheduledTask -TaskName $t.Name -TaskPath $t.Path\n"
+        L"    if ($r) { Write-Host (\"  [OK] \" + $t.Desc) }\n"
+        L"    else    { Write-Host (\"  [--] \" + $t.Name + ' - not found') }\n"
+        L"}\n"
+        L"Write-Host \"`nScheduled task restore complete.\"\n";
+
+    std::string out = Utils::RunPowerShell(script);
+    if (!out.empty()) std::cout << out;
+    Utils::PrintSuccess("Scheduled telemetry tasks re-enabled.");
+}

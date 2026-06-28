@@ -52,7 +52,9 @@ static void PrintMenu() {
         "   8) Performance tweaks (power, cleanup)\n"
         "   9) Create System Restore Point\n"
         "  10) List all targets (preview)\n"
-        "  11) RUN ALL  (everything)\n"
+        "  11) Revert: unblock telemetry domains (hosts)\n"
+        "  12) Revert: re-enable scheduled tasks\n"
+        "  13) RUN ALL  (everything)\n"
         "   0) Exit\n";
 }
 
@@ -125,6 +127,12 @@ int main() {
             HostsManager::List();
             PerformanceManager::List();
         } else if (choice == "11") {
+            if (Utils::AskYesNo("\n  Revert telemetry block in hosts file?"))
+                HostsManager::Revert();
+        } else if (choice == "12") {
+            if (Utils::AskYesNo("\n  Re-enable ALL scheduled telemetry tasks?"))
+                ScheduledTaskManager::EnableAll();
+        } else if (choice == "13") {
             Utils::PrintWarning("This will remove apps, OneDrive, disable services, apply registry tweaks,");
             Utils::PrintWarning("disable scheduled tasks, block telemetry domains, and run performance tweaks.");
             if (Utils::AskYesNo("\n  Proceed with FULL debloat?")) {

@@ -43,7 +43,7 @@ Output: `build\Release\Debloat.exe`
 
 1. Run `Debloat.exe` as administrator (UAC auto-prompts)
 2. Press **9** to create a System Restore Point
-3. Press **11** to RUN ALL — or pick individual options 1–8
+3. Press **13** to RUN ALL — or pick individual options 1–10
 4. Reboot
 
 ```
@@ -57,9 +57,13 @@ Output: `build\Release\Debloat.exe`
    8) Performance tweaks (power, cleanup)
    9) Create System Restore Point
   10) List all targets (preview)
-  11) RUN ALL  (everything)
+  11) Revert: unblock telemetry domains (hosts)
+  12) Revert: re-enable scheduled tasks
+  13) RUN ALL  (everything)
    0) Exit
 ```
+
+> Options **11** and **12** are non-destructive reverts — they undo the hosts-file block and re-enable the disabled scheduled tasks respectively, giving you a quick escape hatch without restoring a whole-system snapshot.
 
 ## What Stays Untouched
 

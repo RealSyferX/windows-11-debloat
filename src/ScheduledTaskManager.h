@@ -13,4 +13,5 @@ public:
     static const std::vector<TelemetryTask>& GetTasks();
     static void List();
     static void DisableAll();
+    static void EnableAll();
 };
