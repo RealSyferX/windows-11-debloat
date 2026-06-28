@@ -130,4 +130,5 @@ void AppxManager::RemoveOneDrive() {
     Utils::PrintPsResult(r,
         "OneDrive removal finished.",
         "PowerShell failed to execute — changes may not have applied.");
+    Utils::LogAction("APPX", std::string("OneDrive removal complete ok=") + (r.ok ? "1" : "0"));
 }

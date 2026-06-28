@@ -75,7 +75,6 @@ void PerformanceManager::List() {
 
 void PerformanceManager::ApplyAll() {
     Utils::PrintHeader("Applying performance tweaks & disk cleanup...");
-    Utils::LogAction("PERFORMANCE", "Applied performance tweaks");
 
     // --- Backup reversible settings before modifying them -------------------
     // Record the original state of the three reversible tweaks so Revert()
@@ -198,6 +197,7 @@ void PerformanceManager::ApplyAll() {
     Utils::PrintPsResult(r,
         "Performance tweaks & disk cleanup complete.",
         "PowerShell failed to execute -- changes may not have applied.");
+    Utils::LogAction("PERFORMANCE", std::string("Applied performance tweaks ok=") + (r.ok ? "1" : "0"));
 }
 
 // -- Pure backup parsing helpers ---------------------------------------------

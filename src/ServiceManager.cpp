@@ -164,6 +164,8 @@ void ServiceManager::DisableAll() {
 
 void ServiceManager::DeleteAll() {
     Utils::PrintHeader("Deleting telemetry services...");
+    Utils::LogAction("SERVICE", "Deleting " +
+        std::to_string(GetTelemetryServices().size()) + " telemetry services (aggressive)");
     for (const auto& s : GetTelemetryServices()) {
         SC_HANDLE scm, svc_h;
         if (!OpenSvc(s, SERVICE_STOP | SERVICE_QUERY_STATUS | SERVICE_CHANGE_CONFIG | DELETE, scm, svc_h)) {
@@ -181,6 +183,7 @@ void ServiceManager::DeleteAll() {
                           << GetLastError() << ")\n";
     }
     Utils::PrintSuccess("Telemetry service deletion requested.");
+    Utils::LogAction("SERVICE", "Service deletion requested");
 }
 
 // -- Pure backup parsing helper -----------------------------------------------
