@@ -183,6 +183,48 @@ void ServiceManager::DeleteAll() {
     Utils::PrintSuccess("Telemetry service deletion requested.");
 }
 
+// -- Pure backup parsing helper -----------------------------------------------
+// Extracted from EnableAll() so the "name|startType" parsing logic can be unit
+// tested without touching the SCM or the filesystem. Mirrors the pattern used
+// by HostsManager (RemoveBlock/HasBlock), TelemetryManager (SplitEscaped/...),
+// and PerformanceManager (ParseBackup).
+
+ParsedServiceBackup ServiceManager::ParseServiceLine(const std::string& line) {
+    ParsedServiceBackup result{ "", 0, false };
+
+    // Tolerate CRLF line endings (matches PerformanceManager::ParseBackup).
+    std::string trimmed = line;
+    if (!trimmed.empty() && trimmed.back() == '\r') trimmed.pop_back();
+
+    // Reject empty lines.
+    if (trimmed.empty()) return result;
+
+    // Find the pipe separator.
+    size_t bar = trimmed.find('|');
+    if (bar == std::string::npos) return result;
+
+    std::string name = trimmed.substr(0, bar);
+    std::string typeStr = trimmed.substr(bar + 1);
+
+    // Reject empty service names — an empty name can never open a real service.
+    if (name.empty()) return result;
+
+    // Parse the start type. std::stoul throws std::invalid_argument on empty
+    // or non-numeric input, and std::out_of_range on overflow; both are
+    // rejected as malformed lines.
+    DWORD startType = 0;
+    try {
+        startType = static_cast<DWORD>(std::stoul(typeStr));
+    } catch (...) {
+        return result;
+    }
+
+    result.name = name;
+    result.startType = startType;
+    result.valid = true;
+    return result;
+}
+
 void ServiceManager::EnableAll() {
     Utils::PrintHeader("Re-enabling telemetry services from backup...");
 
@@ -202,20 +244,11 @@ void ServiceManager::EnableAll() {
     int restored = 0, notFound = 0, failed = 0;
     std::string line;
     while (std::getline(fin, line)) {
-        if (line.empty()) continue;
-        // Parse <service-name>|<startType>
-        size_t bar = line.find('|');
-        if (bar == std::string::npos) continue;
-        std::string nameStr = line.substr(0, bar);
-        std::string typeStr = line.substr(bar + 1);
+        auto parsed = ParseServiceLine(line);
+        if (!parsed.valid) continue;
 
-        DWORD startType = 0;
-        try {
-            startType = static_cast<DWORD>(std::stoul(typeStr));
-        } catch (...) {
-            continue;
-        }
-
+        DWORD startType = parsed.startType;
+        std::string nameStr = parsed.name;
         std::wstring svcName = Utils::StringToWide(nameStr);
         SC_HANDLE svc_h = OpenServiceW(scm, svcName.c_str(),
             SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_CHANGE_CONFIG);

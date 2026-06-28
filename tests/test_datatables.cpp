@@ -594,6 +594,102 @@ static void TestPerfBackupParse() {
     }
 }
 
+// -- ServiceManager backup line parsing ----------------------------------------
+// Tests the pure parsing logic extracted from EnableAll(). The backup file is
+// line-delimited ("name|startType"); ParseServiceLine turns one line into a
+// ParsedServiceBackup struct. This was extracted to a public static method
+// (mirroring HostsManager::RemoveBlock/HasBlock, TelemetryManager::SplitEscaped,
+// and PerformanceManager::ParseBackup) so it can be tested without touching the
+// SCM or the filesystem.
+
+static void TestServiceBackupParse() {
+    // Normal valid line: name and numeric start type.
+    {
+        auto p = ServiceManager::ParseServiceLine("DiagTrack|2");
+        CHECK(p.valid);
+        CHECK(p.name == "DiagTrack");
+        CHECK(p.startType == 2);
+    }
+
+    // CRLF line ending: trailing \r must be stripped before parsing.
+    {
+        auto p = ServiceManager::ParseServiceLine("WerSvc|3\r");
+        CHECK(p.valid);
+        CHECK(p.name == "WerSvc");
+        CHECK(p.startType == 3);
+    }
+
+    // Empty line -> invalid.
+    {
+        auto p = ServiceManager::ParseServiceLine("");
+        CHECK(!p.valid);
+    }
+
+    // No pipe separator -> invalid.
+    {
+        auto p = ServiceManager::ParseServiceLine("garbage");
+        CHECK(!p.valid);
+    }
+
+    // Non-numeric start type -> invalid (std::stoul throws).
+    {
+        auto p = ServiceManager::ParseServiceLine("X|abc");
+        CHECK(!p.valid);
+    }
+
+    // Trailing pipe with empty number -> invalid (stoul on "" throws).
+    {
+        auto p = ServiceManager::ParseServiceLine("X|");
+        CHECK(!p.valid);
+    }
+
+    // Empty name (leading pipe) -> invalid: an empty name can never open a
+    // real service, so the parser rejects it rather than passing an empty
+    // string to OpenServiceW.
+    {
+        auto p = ServiceManager::ParseServiceLine("|4");
+        CHECK(!p.valid);
+    }
+
+    // CRLF-only line ("\r") -> empty after strip -> invalid.
+    {
+        auto p = ServiceManager::ParseServiceLine("\r");
+        CHECK(!p.valid);
+    }
+
+    // SERVICE_AUTO_START (2) round-trips correctly.
+    {
+        auto p = ServiceManager::ParseServiceLine("SomeSvc|2");
+        CHECK(p.valid);
+        CHECK(p.startType == SERVICE_AUTO_START);
+    }
+
+    // SERVICE_DISABLED (4) round-trips correctly.
+    {
+        auto p = ServiceManager::ParseServiceLine("SomeSvc|4");
+        CHECK(p.valid);
+        CHECK(p.startType == SERVICE_DISABLED);
+    }
+
+    // SERVICE_DEMAND_START (3) round-trips correctly.
+    {
+        auto p = ServiceManager::ParseServiceLine("PcaSvc|3");
+        CHECK(p.valid);
+        CHECK(p.startType == SERVICE_DEMAND_START);
+    }
+
+    // Leading/trailing whitespace is preserved in the name (the parser does
+    // not trim — the backup writer never adds whitespace, so a name with
+    // leading spaces is a corrupt line that should fail at OpenServiceW,
+    // not be silently mangled by the parser).
+    {
+        auto p = ServiceManager::ParseServiceLine(" DiagTrack|2");
+        CHECK(p.valid);
+        CHECK(p.name == " DiagTrack");
+        CHECK(p.startType == 2);
+    }
+}
+
 // -- TelemetryManager root-key validation -------------------------------------
 // Tests the HKEY allowlist used by Revert() to guard against corrupt or
 // hand-edited backup files. Only the six predefined root keys are valid;
@@ -686,6 +782,7 @@ int main() {
     TestFullBackupRecordRoundTrip();
     TestRootKeyValidation();
     TestPerfBackupParse();
+    TestServiceBackupParse();
 
     if (g_failures == 0) {
         std::cout << "All tests passed.\n";
