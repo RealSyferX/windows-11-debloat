@@ -56,6 +56,7 @@ static void PrintMenu() {
         "  12) Revert: re-enable scheduled tasks\n"
         "  13) RUN ALL  (everything)\n"
         "  14) Revert: re-enable telemetry services\n"
+        "  15) Revert: undo registry tweaks\n"
         "   0) Exit\n";
 }
 
@@ -155,6 +156,9 @@ int main() {
         } else if (choice == "14") {
             if (Utils::AskYesNo("\n  Re-enable ALL telemetry services?"))
                 ServiceManager::EnableAll();
+        } else if (choice == "15") {
+            if (Utils::AskYesNo("\n  Revert ALL registry tweaks from backup?"))
+                TelemetryManager::Revert();
         } else {
             Utils::PrintError("Invalid option.");
         }

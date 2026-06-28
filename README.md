@@ -44,7 +44,7 @@ Output: `build\Release\Debloat.exe`
 1. Run `Debloat.exe` as administrator (UAC auto-prompts)
 2. Press **9** to create a System Restore Point
 3. Press **13** to RUN ALL — or pick individual options 1–10
-4. Use options 11, 12, or 14 to revert specific changes if needed
+4. Use options 11, 12, 14, or 15 to revert specific changes if needed
 5. Reboot
 
 ```
@@ -62,10 +62,11 @@ Output: `build\Release\Debloat.exe`
    12) Revert: re-enable scheduled tasks
    13) RUN ALL  (everything)
    14) Revert: re-enable telemetry services
+   15) Revert: undo registry tweaks
     0) Exit
 ```
 
-> Options **11**, **12**, and **14** are non-destructive reverts — they undo the hosts-file block, re-enable the disabled scheduled tasks, and restore previously-disabled telemetry services respectively, giving you a quick escape hatch without restoring a whole-system snapshot. Option 14 reads a start-type backup written by option 3, so it restores the exact configuration that existed before disabling.
+> Options **11**, **12**, **14**, and **15** are non-destructive reverts — they undo the hosts-file block, re-enable the disabled scheduled tasks, restore previously-disabled telemetry services, and restore the original registry values respectively, giving you a quick escape hatch without restoring a whole-system snapshot. Option 14 reads a start-type backup written by option 3, so it restores the exact configuration that existed before disabling. Option 15 reads a per-value registry backup written by option 5 / RUN ALL (stored at `%ProgramData%\Debloat\reg_backup.txt`), so it writes each original value back — or deletes the value entirely if it did not exist before the tweak — preserving your prior customization instead of blindly resetting to Microsoft defaults.
 
 ## What Stays Untouched
 
@@ -110,7 +111,7 @@ This tool is surgical. It does **not** touch:
 - Apps removed via PowerShell `Remove-AppxPackage` + `Remove-AppxProvisionedPackage`
 - Scheduled tasks disabled via PowerShell `Disable-ScheduledTask`
 - Hosts file edited directly (idempotent — marker comment prevents duplicates)
-- Registry tweaks via `RegCreateKeyExW` / `RegSetValueExW`
+- Registry tweaks via `RegCreateKeyExW` / `RegSetValueExW`, with per-value backup at `%ProgramData%\Debloat\reg_backup.txt` for revert
 - Performance via `powercfg`, `DISM /StartComponentCleanup /ResetBase`
 
 ## License

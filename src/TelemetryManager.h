@@ -20,4 +20,9 @@ public:
     static const std::vector<RegistryTweak>& GetRegistryTweaks();
     static void List();
     static void ApplyAll();
+    // Restore registry values snapshotted before ApplyAll (option 15).
+    // Reads the per-value backup written to %ProgramData%\Debloat\reg_backup.txt
+    // and writes each original value back (or deletes the value if it did not
+    // exist before ApplyAll overwrote it).
+    static void Revert();
 };
