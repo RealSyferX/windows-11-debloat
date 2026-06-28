@@ -23,6 +23,7 @@
 #include "Utils.h"
 
 #include <iostream>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -162,6 +163,110 @@ static void TestEscapePsSingleQuote() {
     CHECK(Utils::EscapePsSingleQuote(L"") == L"");
 }
 
+// -- HostsManager block removal ---------------------------------------------
+// Tests the pure string-manipulation logic extracted from Revert/Apply.
+// The marker constants are public static constexpr members of HostsManager,
+// so we reference them directly (no duplication).
+
+static void TestHostsRemoveBlock() {
+    // Normal block: both markers present. The content simulates a real hosts
+    // file where the original content ends with \n, and Apply appended \n\n
+    // before the marker, giving \n\n\n before MARKER. RemoveBlock erases the
+    // \n\n (from Apply) + the block, leaving the original \n intact.
+    {
+        std::string content = std::string("pre\n\n\n") +
+            HostsManager::MARKER + "\n0.0.0.0 x\n" +
+            HostsManager::END_MARKER + "\npost";
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(result.has_value());
+        CHECK(*result == "pre\npost");
+    }
+
+    // Truncated block: start marker present, end marker missing.
+    {
+        std::string content = std::string("pre\n") +
+            HostsManager::MARKER + "\n0.0.0.0 x\n";
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(result.has_value());
+        CHECK(*result == "pre\n");
+    }
+
+    // No markers at all — nothing to do.
+    {
+        std::string content = "plain hosts file\n";
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(!result.has_value());
+    }
+
+    // Start marker only at EOF — content is just the marker.
+    {
+        std::string content = HostsManager::MARKER;
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(result.has_value());
+        CHECK(*result == "");
+    }
+
+    // Block at very start (no preceding \n\n) — must not underflow.
+    {
+        std::string content = std::string(HostsManager::MARKER) +
+            "\n0.0.0.0 x\n" + HostsManager::END_MARKER + "\npost";
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(result.has_value());
+        CHECK(*result == "post");
+    }
+
+    // Idempotency: RemoveBlock(RemoveBlock(x)) — second call returns nullopt
+    // because the block has already been removed.
+    {
+        std::string content = std::string("pre\n\n\n") +
+            HostsManager::MARKER + "\n0.0.0.0 x\n" +
+            HostsManager::END_MARKER + "\npost";
+        auto first = HostsManager::RemoveBlock(content);
+        CHECK(first.has_value());
+        auto second = HostsManager::RemoveBlock(*first);
+        CHECK(!second.has_value());
+    }
+}
+
+static void TestHostsHasBlock() {
+    // MARKER present -> true.
+    {
+        std::string content = std::string("0.0.0.0 x\n") +
+            HostsManager::MARKER + "\n0.0.0.0 y\n";
+        CHECK(HostsManager::HasBlock(content));
+    }
+
+    // MARKER absent -> false.
+    {
+        std::string content = "plain hosts file\n0.0.0.0 localhost\n";
+        CHECK(!HostsManager::HasBlock(content));
+    }
+
+    // Empty string -> false.
+    {
+        CHECK(!HostsManager::HasBlock(""));
+    }
+}
+
+// -- Utils string conversion round-trip --------------------------------------
+
+static void TestStringRoundTrip() {
+    // Empty string round-trips to empty.
+    CHECK(Utils::WideToString(Utils::StringToWide("")) == "");
+
+    // ASCII string round-trips correctly.
+    CHECK(Utils::WideToString(Utils::StringToWide("hello world")) == "hello world");
+
+    // Multi-byte UTF-8 (em dash, U+2014, encoded as E2 80 94) round-trips.
+    {
+        std::string emDash = "\xE2\x80\x94";
+        std::wstring wide = Utils::StringToWide(emDash);
+        CHECK(wide.size() == 1);
+        CHECK(wide[0] == L'\x2014');
+        CHECK(Utils::WideToString(wide) == emDash);
+    }
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -171,6 +276,9 @@ int main() {
     TestBlockedDomains();
     TestRegistryTweaks();
     TestEscapePsSingleQuote();
+    TestHostsRemoveBlock();
+    TestHostsHasBlock();
+    TestStringRoundTrip();
 
     if (g_failures == 0) {
         std::cout << "All tests passed.\n";

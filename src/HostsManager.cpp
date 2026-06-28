@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 const std::vector<std::wstring>& HostsManager::GetBlockedDomains() {
     static const std::vector<std::wstring> domains = {
@@ -39,9 +40,8 @@ const std::vector<std::wstring>& HostsManager::GetBlockedDomains() {
     return domains;
 }
 
-// Narrow (byte-oriented) marker: the hosts file is ANSI/UTF-8 narrow bytes,
-// never UTF-16. /utf-8 is set in CMake so the em dash encodes correctly.
-static const char* MARKER = "# ===== RealSyferX Debloat — Telemetry Block =====";
+// MARKER and END_MARKER are defined as public static constexpr members in
+// HostsManager.h so that unit tests can reference them directly.
 
 // Returns the real hosts-file path using the actual system directory, so the
 // tool works even when Windows is installed on a drive other than C: (common
@@ -79,7 +79,7 @@ void HostsManager::Apply() {
                          std::istreambuf_iterator<char>());
     fin.close();
 
-    if (content.find(MARKER) != std::string::npos) {
+    if (HasBlock(content)) {
         std::cout << "  [--] Telemetry block already applied. Skipping.\n";
         Utils::PrintWarning("Hosts block already present — no changes made.");
         return;
@@ -126,19 +126,42 @@ void HostsManager::Revert() {
                          std::istreambuf_iterator<char>());
     fin.close();
 
-    static const char* END_MARKER = "# ===== End RealSyferX Debloat =====";
-
-    size_t start = content.find(MARKER);
-    size_t end   = content.find(END_MARKER);
-
-    if (start == std::string::npos && end == std::string::npos) {
+    // The block-removal logic lives in the pure, testable RemoveBlock helper.
+    auto result = RemoveBlock(std::move(content));
+    if (!result) {
         std::cout << "  [--] No block found — nothing to revert.\n";
         return;
     }
 
-    if (start != std::string::npos && end == std::string::npos) {
+    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::trunc);
+    if (!fout.is_open()) {
+        Utils::PrintError("Failed to open hosts file for writing.");
+        return;
+    }
+    fout << *result;
+    fout.flush();
+    fout.close();
+
+    std::cout << "  [OK] Hosts block reverted.\n";
+
+    auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+    if (!r.out.empty()) std::cout << r.out;
+    if (r.ok) Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
+    else      Utils::PrintError("Hosts block removed, but PowerShell failed to flush DNS cache.");
+}
+
+std::optional<std::string> HostsManager::RemoveBlock(std::string content) {
+    size_t start = content.find(MARKER);
+    size_t end   = content.find(END_MARKER);
+
+    // No start marker — nothing to remove. Also covers the case where only
+    // the end marker is present (malformed block); we cannot safely remove
+    // anything without a start marker.
+    if (start == std::string::npos)
+        return std::nullopt;
+
+    if (end == std::string::npos) {
         // Truncated block — no end marker. Erase from start marker to EOF.
-        Utils::PrintWarning("End marker missing — block appears truncated. Removing from start marker to EOF.");
         content.erase(start);
     } else {
         // Both markers found — erase from start marker through the end of
@@ -158,19 +181,9 @@ void HostsManager::Revert() {
         content.erase(removeStart, endLineEnd - removeStart);
     }
 
-    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::trunc);
-    if (!fout.is_open()) {
-        Utils::PrintError("Failed to open hosts file for writing.");
-        return;
-    }
-    fout << content;
-    fout.flush();
-    fout.close();
+    return content;
+}
 
-    std::cout << "  [OK] Hosts block reverted.\n";
-
-    auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
-    else      Utils::PrintError("Hosts block removed, but PowerShell failed to flush DNS cache.");
+bool HostsManager::HasBlock(const std::string& content) {
+    return content.find(MARKER) != std::string::npos;
 }
