@@ -267,6 +267,247 @@ static void TestStringRoundTrip() {
     }
 }
 
+// -- TelemetryManager backup/restore pure functions --------------------------
+// Tests the four helpers (EscapeField, SplitEscaped, HexEncode, HexDecode)
+// that parse and serialize the registry backup file written by ApplyAll() and
+// read by Revert(). A bug in any of them would silently corrupt the backup or
+// restore the wrong registry values. These were extracted to public static
+// methods (mirroring HostsManager::RemoveBlock/HasBlock) so they can be tested
+// in isolation without touching the registry or the filesystem.
+
+static void TestEscapeFieldRoundTrip() {
+    // Single-field round-trip: SplitEscaped(EscapeField(s))[0] must recover s.
+    // Backslash is the escape character, pipe is the field separator, so both
+    // must survive a full encode -> decode cycle.
+    const std::string cases[] = {
+        "",                                               // empty
+        "hello",                                          // plain ASCII
+        "a\\b",                                           // backslash
+        "a|b",                                            // pipe
+        "a\\|b",                                          // backslash + pipe
+        "a\\\\|b",                                        // two backslashes then pipe
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",   // registry path
+        "|",                                              // lone pipe
+        "\\",                                             // lone backslash
+        "no special chars here 12345"                    // boring text
+    };
+    for (const auto& s : cases) {
+        auto parsed = TelemetryManager::SplitEscaped(TelemetryManager::EscapeField(s));
+        CHECK(parsed.size() == 1);
+        CHECK(parsed[0] == s);
+    }
+
+    // Multi-field record round-trip. Build three escaped fields joined by '|'
+    // and verify SplitEscaped recovers each one exactly.
+    {
+        const std::string f0 = "first\\field";
+        const std::string f1 = "second|field";
+        const std::string f2 = "third\\|field";
+        std::string record = TelemetryManager::EscapeField(f0) + "|" +
+                             TelemetryManager::EscapeField(f1) + "|" +
+                             TelemetryManager::EscapeField(f2);
+        auto parsed = TelemetryManager::SplitEscaped(record);
+        CHECK(parsed.size() == 3);
+        CHECK(parsed[0] == f0);
+        CHECK(parsed[1] == f1);
+        CHECK(parsed[2] == f2);
+    }
+}
+
+static void TestHexEncodeDecodeRoundTrip() {
+    // Empty input -> empty hex, and decodes back to empty.
+    {
+        std::vector<BYTE> data;
+        CHECK(TelemetryManager::HexEncode(data) == "");
+        CHECK(TelemetryManager::HexDecode(TelemetryManager::HexEncode(data)) == data);
+    }
+    // Single byte 0x00.
+    {
+        std::vector<BYTE> data = { 0x00 };
+        CHECK(TelemetryManager::HexEncode(data) == "00");
+        CHECK(TelemetryManager::HexDecode(TelemetryManager::HexEncode(data)) == data);
+    }
+    // Single byte 0xFF.
+    {
+        std::vector<BYTE> data = { 0xFF };
+        CHECK(TelemetryManager::HexEncode(data) == "FF");
+        CHECK(TelemetryManager::HexDecode(TelemetryManager::HexEncode(data)) == data);
+    }
+    // All 256 byte values 0x00..0xFF.
+    {
+        std::vector<BYTE> data;
+        for (int i = 0; i < 256; ++i)
+            data.push_back(static_cast<BYTE>(i));
+        CHECK(TelemetryManager::HexDecode(TelemetryManager::HexEncode(data)) == data);
+    }
+    // A long pseudo-random-ish sequence.
+    {
+        std::vector<BYTE> data;
+        for (int i = 0; i < 1000; ++i)
+            data.push_back(static_cast<BYTE>(i * 31 + 7));
+        CHECK(TelemetryManager::HexDecode(TelemetryManager::HexEncode(data)) == data);
+    }
+    // HexDecode also accepts lowercase a-f (HexDecode is case-insensitive).
+    {
+        auto out = TelemetryManager::HexDecode("deadbeef");
+        CHECK(out.size() == 4);
+        CHECK(out[0] == 0xDE);
+        CHECK(out[1] == 0xAD);
+        CHECK(out[2] == 0xBE);
+        CHECK(out[3] == 0xEF);
+    }
+}
+
+static void TestHexDecodeMalformed() {
+    // Empty input -> empty output.
+    CHECK(TelemetryManager::HexDecode("").empty());
+
+    // Odd length ("A"): the loop condition (i+1 < size) never holds for the
+    // dangling char, so nothing is decoded.
+    CHECK(TelemetryManager::HexDecode("A").empty());
+
+    // Invalid hex chars ("XYZ"): 'X' is invalid on the very first pair, so the
+    // decoder bails out immediately and returns empty.
+    CHECK(TelemetryManager::HexDecode("XYZ").empty());
+
+    // Partial decode: the first pair "AB" is valid, the second pair "XY" is
+    // invalid, so the decoder returns the one byte it managed to decode.
+    {
+        auto out = TelemetryManager::HexDecode("ABXY");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == 0xAB);
+    }
+
+    // Odd length after a valid pair ("AB1"): "AB" decodes, then the lone '1'
+    // is ignored by the loop bound.
+    {
+        auto out = TelemetryManager::HexDecode("AB1");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == 0xAB);
+    }
+}
+
+static void TestSplitEscapedEdgeCases() {
+    // Empty string -> one empty field (the final push_back always runs).
+    {
+        auto out = TelemetryManager::SplitEscaped("");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "");
+    }
+
+    // Single field, no pipe -> one field equal to the input.
+    {
+        auto out = TelemetryManager::SplitEscaped("hello");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "hello");
+    }
+
+    // Plain pipe-delimited fields, no escapes.
+    {
+        auto out = TelemetryManager::SplitEscaped("a|b|c");
+        CHECK(out.size() == 3);
+        CHECK(out[0] == "a");
+        CHECK(out[1] == "b");
+        CHECK(out[2] == "c");
+    }
+
+    // Escaped pipe "\|" -> literal '|' inside the field, not a separator.
+    {
+        auto out = TelemetryManager::SplitEscaped("a\\|b");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "a|b");
+    }
+
+    // Escaped backslash "\\" -> literal '\' inside the field.
+    {
+        auto out = TelemetryManager::SplitEscaped("a\\\\b");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "a\\b");
+    }
+
+    // Unknown escape "\x" -> keeps the backslash literally, then 'x'.
+    {
+        auto out = TelemetryManager::SplitEscaped("a\\xb");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "a\\xb");
+    }
+
+    // Trailing backslash at end of line -> consumed as an incomplete escape;
+    // the backslash is dropped from the final field.
+    {
+        auto out = TelemetryManager::SplitEscaped("abc\\");
+        CHECK(out.size() == 1);
+        CHECK(out[0] == "abc");
+    }
+
+    // Trailing backslash right after a pipe -> two fields, second empty.
+    {
+        auto out = TelemetryManager::SplitEscaped("abc|\\");
+        CHECK(out.size() == 2);
+        CHECK(out[0] == "abc");
+        CHECK(out[1] == "");
+    }
+
+    // Trailing pipe -> two fields, second empty.
+    {
+        auto out = TelemetryManager::SplitEscaped("a|");
+        CHECK(out.size() == 2);
+        CHECK(out[0] == "a");
+        CHECK(out[1] == "");
+    }
+
+    // Lone pipe -> two empty fields.
+    {
+        auto out = TelemetryManager::SplitEscaped("|");
+        CHECK(out.size() == 2);
+        CHECK(out[0] == "");
+        CHECK(out[1] == "");
+    }
+}
+
+static void TestFullBackupRecordRoundTrip() {
+    // Simulate exactly what ApplyAll writes for one registry value, including
+    // a sub-key path full of backslashes and a value name that also contains a
+    // backslash (registry paths use them). Then parse it back like Revert does
+    // and verify every field — including the hex-encoded original bytes.
+    const std::string rootKeyNum = "2147483649";  // 0x80000001 == HKEY_CURRENT_USER
+    const std::string subKey     = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+    const std::string valueName  = "Some\\Value\\With\\Backslash";
+    const std::string existed    = "1";
+    const std::string type       = "4";   // REG_DWORD
+    const std::vector<BYTE> origData = { 0x01, 0x00, 0x00, 0x00 };  // DWORD 1, little-endian
+    const std::string dataLen    = "4";
+    const std::string dataHex    = TelemetryManager::HexEncode(origData);
+
+    // Record format: rootKeyNum|subKey|valueName|existed|type|dataLen|dataHex
+    std::string record =
+        TelemetryManager::EscapeField(rootKeyNum) + "|" +
+        TelemetryManager::EscapeField(subKey) + "|" +
+        TelemetryManager::EscapeField(valueName) + "|" +
+        TelemetryManager::EscapeField(existed) + "|" +
+        TelemetryManager::EscapeField(type) + "|" +
+        TelemetryManager::EscapeField(dataLen) + "|" +
+        TelemetryManager::EscapeField(dataHex);
+
+    auto f = TelemetryManager::SplitEscaped(record);
+    CHECK(f.size() == 7);
+    CHECK(f[0] == rootKeyNum);
+    CHECK(f[1] == subKey);
+    CHECK(f[2] == valueName);
+    CHECK(f[3] == existed);
+    CHECK(f[4] == type);
+    CHECK(f[5] == dataLen);
+    CHECK(f[6] == dataHex);
+
+    // The dataHex field must round-trip through HexDecode back to the bytes.
+    CHECK(TelemetryManager::HexDecode(f[6]) == origData);
+
+    // Revert() skips any line whose SplitEscaped field count is not 7. Verify
+    // a short record is rejected by that guard.
+    auto bad = TelemetryManager::SplitEscaped("a|b|c");
+    CHECK(bad.size() != 7);
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -279,6 +520,11 @@ int main() {
     TestHostsRemoveBlock();
     TestHostsHasBlock();
     TestStringRoundTrip();
+    TestEscapeFieldRoundTrip();
+    TestHexEncodeDecodeRoundTrip();
+    TestHexDecodeMalformed();
+    TestSplitEscapedEdgeCases();
+    TestFullBackupRecordRoundTrip();
 
     if (g_failures == 0) {
         std::cout << "All tests passed.\n";

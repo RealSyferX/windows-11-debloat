@@ -25,4 +25,22 @@ public:
     // and writes each original value back (or deletes the value if it did not
     // exist before ApplyAll overwrote it).
     static void Revert();
+
+    // -- Backup format pure helpers ------------------------------------------
+    // These parse and serialize the pipe-delimited registry backup file
+    // written by ApplyAll() and read by Revert(). Public static so unit tests
+    // can exercise them directly (mirrors the HostsManager pattern).
+    //
+    // Escape backslash and pipe so a field is safe inside the pipe-delimited
+    // record format.
+    static std::string EscapeField(const std::string& s);
+    // Splits a line on unescaped '|'. '\|' -> '|', '\\' -> '\' in output.
+    // An unknown escape (e.g. "\x") keeps the backslash literally. A trailing
+    // backslash is consumed and yields an empty final field.
+    static std::vector<std::string> SplitEscaped(const std::string& s);
+    // Uppercase hex encoding of a byte vector.
+    static std::string HexEncode(const std::vector<BYTE>& data);
+    // Decodes a hex string back to bytes. Malformed input (invalid hex char
+    // or odd length) returns whatever was decoded so far (possibly empty).
+    static std::vector<BYTE> HexDecode(const std::string& hex);
 };

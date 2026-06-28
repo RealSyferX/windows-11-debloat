@@ -199,7 +199,7 @@ void TelemetryManager::List() {
 // Escape backslash and pipe so the field is safe inside the pipe-delimited
 // record format. Registry paths/value-names do not normally contain pipes, but
 // escaping makes the format unambiguous regardless.
-static std::string EscapeField(const std::string& s) {
+std::string TelemetryManager::EscapeField(const std::string& s) {
     std::string out;
     out.reserve(s.size());
     for (char c : s) {
@@ -211,7 +211,7 @@ static std::string EscapeField(const std::string& s) {
 
 // Splits a line on unescaped '|'. '\|' -> '|', '\\' -> '\' in output. Used to
 // parse the backup records written by ApplyAll().
-static std::vector<std::string> SplitEscaped(const std::string& s) {
+std::vector<std::string> TelemetryManager::SplitEscaped(const std::string& s) {
     std::vector<std::string> out;
     std::string cur;
     bool esc = false;
@@ -234,7 +234,7 @@ static std::vector<std::string> SplitEscaped(const std::string& s) {
     return out;
 }
 
-static std::string HexEncode(const std::vector<BYTE>& data) {
+std::string TelemetryManager::HexEncode(const std::vector<BYTE>& data) {
     static const char* hex = "0123456789ABCDEF";
     std::string out;
     out.reserve(data.size() * 2);
@@ -245,7 +245,7 @@ static std::string HexEncode(const std::vector<BYTE>& data) {
     return out;
 }
 
-static std::vector<BYTE> HexDecode(const std::string& hex) {
+std::vector<BYTE> TelemetryManager::HexDecode(const std::string& hex) {
     std::vector<BYTE> out;
     out.reserve(hex.size() / 2);
     auto val = [](char c) -> int {
