@@ -81,6 +81,11 @@ int main() {
         std::string choice;
         std::getline(std::cin, choice);
 
+        if (!std::cin) {
+            std::cout << "\n  EOF detected. Exiting.\n";
+            break;
+        }
+
         if (choice == "0") {
             std::cout << "\n  Goodbye.\n";
             break;

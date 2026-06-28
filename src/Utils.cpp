@@ -99,6 +99,7 @@ bool AskYesNo(const std::string& prompt) {
     std::cout << prompt << " (Y/n): ";
     std::string in;
     std::getline(std::cin, in);
+    if (!std::cin) return false;
     if (in.empty()) return true;
     return std::tolower(static_cast<unsigned char>(in[0])) == 'y';
 }
