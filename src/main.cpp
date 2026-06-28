@@ -87,18 +87,52 @@ static const char* MenuDescription(const std::string& choice) {
 }
 
 int main(int argc, char* argv[]) {
-    // --version / -V: print version and exit immediately, before any UAC
-    // elevation check or banner display, so users can check the version of
-    // a binary without being prompted for admin rights.
-    if (argc >= 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "-V")) {
+    // Parse all command-line flags in a single pass before any other logic.
+    // --version and --help exit BEFORE the UAC elevation check so non-admin
+    // users can query the binary without being prompted for admin rights.
+    // --no-banner skips the animated banner but continues to the menu flow,
+    // which still requires elevation.
+    bool noBanner = false;
+    bool showHelp = false;
+    bool showVersion = false;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg == "--version" || arg == "-V") {
+            showVersion = true;
+        } else if (arg == "--help" || arg == "-h") {
+            showHelp = true;
+        } else if (arg == "--no-banner" || arg == "-q") {
+            noBanner = true;
+        }
+    }
+
+    if (showVersion) {
         std::cout << "Debloat v" << Utils::GetVersion() << "\n";
+        return 0;
+    }
+
+    if (showHelp) {
+        // Ensure the em-dash and any other non-ASCII characters render correctly
+        // even though this runs before the main SetConsoleOutputCP(CP_UTF8) call.
+        SetConsoleOutputCP(CP_UTF8);
+        std::cout << "Debloat v" << Utils::GetVersion() << " — Windows 11 Debloat Tool\n";
+        std::cout << "Usage: Debloat.exe [--version] [--help] [--no-banner]\n\n";
+        std::cout << "Flags:\n";
+        std::cout << "  --version, -V    Print version and exit\n";
+        std::cout << "  --help, -h       Print this help and exit\n";
+        std::cout << "  --no-banner, -q  Skip animated banner (for scripted use)\n\n";
+        std::cout << "Menu options (interactive mode):\n";
+        PrintMenu();
         return 0;
     }
 
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleTitleW(L"Windows 11 Debloat");
 
-    PrintBanner();
+    if (!noBanner) {
+        PrintBanner();
+    }
 
     if (!Utils::IsElevated()) {
         Utils::PrintError("Administrator privileges required.");

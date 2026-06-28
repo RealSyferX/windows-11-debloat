@@ -71,6 +71,16 @@ Output: `build\Release\Debloat.exe`
 
 > Options **11**, **12**, **14**, **15**, and **16** are non-destructive reverts — they undo the hosts-file block, re-enable the disabled scheduled tasks, restore previously-disabled telemetry services, restore the original registry values, and revert the reversible performance tweaks respectively, giving you a quick escape hatch without restoring a whole-system snapshot. Option 14 reads a start-type backup written by option 3, so it restores the exact configuration that existed before disabling. Option 15 reads a per-value registry backup written by option 5 / RUN ALL (stored at `%ProgramData%\Debloat\reg_backup.txt`), so it writes each original value back — or deletes the value entirely if it did not exist before the tweak — preserving your prior customization instead of blindly resetting to Microsoft defaults. Option 16 reads a performance backup written by option 8 / RUN ALL (stored at `%ProgramData%\Debloat\perf_backup.txt`) and reverts the three reversible performance tweaks: re-enables hibernation (`powercfg /h on`), restores the original `HiberbootEnabled` registry value (fast startup), and restores the original active power plan GUID. The other three performance tweaks — temp file cleanup, Windows Update cache clearing, and DISM `/ResetBase` — are irreversible and cannot be undone.
 
+### Command-line flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--version` | `-V` | Print version and exit (no elevation required) |
+| `--help` | `-h` | Print usage and menu options (no elevation required) |
+| `--no-banner` | `-q` | Skip animated banner for scripted/automated use |
+
+`--version` and `--help` exit before the UAC elevation check, so non-admin users can query the binary without being prompted for admin rights. `--no-banner` skips the animated banner but still enters the interactive menu (elevation still required).
+
 ## What Stays Untouched
 
 This tool is surgical. It does **not** touch:
