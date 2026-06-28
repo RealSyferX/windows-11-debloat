@@ -143,15 +143,15 @@ void PerformanceManager::ApplyAll() {
         L"}\n\n"
 
         // High performance power plan
+        // 8c5e7fda-e8bf-4a96-ba6a-ef8a0def9a8b is the invariant High Performance
+        // scheme GUID -- the same across all Windows SKUs and locales, documented
+        // by Microsoft. Activating by GUID avoids matching the localized display
+        // name from `powercfg -l` (e.g. "Hoechstleistung" on German, "Performances
+        // elevees" on French), which silently fails on every non-English locale.
         L"Write-Host '  Setting High Performance power plan...'\n"
-        L"$hp = powercfg -l | Where-Object { $_ -match 'High performance' }\n"
-        L"if ($hp -match '([a-fA-F0-9-]{36})') {\n"
-        L"  powercfg -setactive $Matches[1]\n"
-        L"  if ($LASTEXITCODE -eq 0) { Write-Host '  [OK] High Performance power plan set' }\n"
-        L"  else { Write-Host \"  [!!] Power plan setactive failed (exit $LASTEXITCODE)\" }\n"
-        L"} else {\n"
-        L"  Write-Host '  [!!] High Performance power plan not found'\n"
-        L"}\n\n"
+        L"powercfg -setactive 8c5e7fda-e8bf-4a96-ba6a-ef8a0def9a8b\n"
+        L"if ($LASTEXITCODE -eq 0) { Write-Host '  [OK] High Performance power plan set' }\n"
+        L"else { Write-Host \"  [!!] High Performance power plan not available (exit $LASTEXITCODE)\" }\n\n"
 
         // Clean temp files (per-item counting so locked files are reported)
         L"Write-Host '  Cleaning temp files...'\n"
