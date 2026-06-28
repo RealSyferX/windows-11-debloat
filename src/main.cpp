@@ -136,14 +136,20 @@ int main() {
             Utils::PrintWarning("This will remove apps, OneDrive, disable services, apply registry tweaks,");
             Utils::PrintWarning("disable scheduled tasks, block telemetry domains, and run performance tweaks.");
             if (Utils::AskYesNo("\n  Proceed with FULL debloat?")) {
-                AppxManager::RemoveAll();
-                AppxManager::RemoveOneDrive();
-                ServiceManager::DisableAll();
-                ScheduledTaskManager::DisableAll();
-                HostsManager::Apply();
-                TelemetryManager::ApplyAll();
-                PerformanceManager::ApplyAll();
-                Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
+                Utils::PrintInfo("Creating a System Restore Point before proceeding...");
+                Utils::CreateRestorePoint();
+                if (!Utils::AskYesNo("  Restore point attempted. Continue with full debloat?")) {
+                    Utils::PrintInfo("Aborted. No changes were made.");
+                } else {
+                    AppxManager::RemoveAll();
+                    AppxManager::RemoveOneDrive();
+                    ServiceManager::DisableAll();
+                    ScheduledTaskManager::DisableAll();
+                    HostsManager::Apply();
+                    TelemetryManager::ApplyAll();
+                    PerformanceManager::ApplyAll();
+                    Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
+                }
             }
         } else {
             Utils::PrintError("Invalid option.");

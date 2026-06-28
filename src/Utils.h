@@ -17,5 +17,5 @@ namespace Utils {
     bool AskYesNo(const std::string& prompt);
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
-    void CreateRestorePoint();
+    bool CreateRestorePoint();
 }

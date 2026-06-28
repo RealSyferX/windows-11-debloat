@@ -122,14 +122,34 @@ bool AskYesNo(const std::string& prompt) {
     return std::tolower(static_cast<unsigned char>(in[0])) == 'y';
 }
 
-void CreateRestorePoint() {
+bool CreateRestorePoint() {
+    // Enable-ComputerRestore may error if System Restore is already enabled on
+    // the drive; that is harmless, so silence it. Checkpoint-Computer, however,
+    // must surface real failures (disabled SR, disk full, group-policy block,
+    // etc.) so the user is not falsely told a safety net exists. We use
+    // -ErrorAction Stop so the error becomes terminating and the try/catch can
+    // capture it, then emit a honest [OK]/[!!] marker the C++ side keys off.
     std::string out = RunPowerShell(
         L"Enable-ComputerRestore -Drive 'C:\\' -ErrorAction SilentlyContinue; "
-        L"Checkpoint-Computer -Description 'Before Debloat' "
-        L"-RestorePointType 'MODIFY_SETTINGS' -ErrorAction SilentlyContinue; "
-        L"Write-Host '  Restore point created (or already exists).'"
+        L"$ok = $true; $errMsg = ''; "
+        L"try { Checkpoint-Computer -Description 'Before Debloat' "
+        L"-RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop } "
+        L"catch { $ok = $false; $errMsg = $_.Exception.Message }; "
+        L"if ($ok) { Write-Host '[OK] Restore point created.' } "
+        L"else { Write-Host ('[!!] Failed: ' + $errMsg) }"
     );
-    if (!out.empty()) std::cout << out;
+    // Trim trailing whitespace/newlines so the colored printers don't double-up.
+    while (!out.empty() && (out.back() == '\n' || out.back() == '\r' ||
+                            out.back() == ' '  || out.back() == '\t'))
+        out.pop_back();
+    // Success is signalled by the [OK] marker; anything else (empty output,
+    // [!!] failure line, or an unexpected payload) is treated as failure.
+    bool success = out.find("[OK]") != std::string::npos;
+    if (success)
+        PrintSuccess(out);
+    else
+        PrintError(out.empty() ? "[!!] Failed: unable to create restore point." : out);
+    return success;
 }
 
 } // namespace Utils
