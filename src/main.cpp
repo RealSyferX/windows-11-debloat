@@ -57,6 +57,7 @@ static void PrintMenu() {
         "  13) RUN ALL  (everything)\n"
         "  14) Revert: re-enable telemetry services\n"
         "  15) Revert: undo registry tweaks\n"
+        "  16) Revert: undo performance tweaks (hibernation, fast startup, power plan)\n"
         "   0) Exit\n";
 }
 
@@ -159,6 +160,9 @@ int main() {
         } else if (choice == "15") {
             if (Utils::AskYesNo("\n  Revert ALL registry tweaks from backup?"))
                 TelemetryManager::Revert();
+        } else if (choice == "16") {
+            if (Utils::AskYesNo("\n  Revert performance tweaks (hibernation, fast startup, power plan)?"))
+                PerformanceManager::Revert();
         } else {
             Utils::PrintError("Invalid option.");
         }
