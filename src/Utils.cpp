@@ -415,4 +415,40 @@ void LogAction(const std::string& action, const std::string& detail) {
         return out;
     }
 
+    bool WriteBackupAtomic(const std::wstring& path,
+                           const std::function<bool(std::ofstream&)>& writer) {
+        // Construct a temp path in the same directory so the rename is atomic
+        // (same volume). If the process crashes mid-write, the temp file is
+        // left behind but the original backup is untouched.
+        std::wstring tmpPath = path + L".tmp";
+
+        std::ofstream tmp(tmpPath, std::ios::binary | std::ios::trunc);
+        if (!tmp.is_open()) {
+            PrintWarning("WriteBackupAtomic: could not create temp file: " +
+                WideToString(tmpPath));
+            return false;
+        }
+
+        // Let the caller populate the temp file. If the writer returns false,
+        // the write is considered failed — clean up and bail.
+        if (!writer(tmp)) {
+            tmp.close();
+            DeleteFileW(tmpPath.c_str());
+            return false;
+        }
+
+        tmp.flush();
+        tmp.close();
+
+        // Atomically replace the target with the fully-written temp file.
+        if (!MoveFileExW(tmpPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+            PrintError("WriteBackupAtomic: MoveFileExW failed (GLE=" +
+                std::to_string(GetLastError()) + ")");
+            DeleteFileW(tmpPath.c_str());
+            return false;
+        }
+
+        return true;
+    }
+
 } // namespace Utils

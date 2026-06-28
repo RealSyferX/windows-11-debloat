@@ -1,5 +1,7 @@
 #pragma once
 #include <string>
+#include <functional>
+#include <fstream>
 #include <windows.h>
 
 #ifndef DEBLOAT_VERSION
@@ -68,4 +70,11 @@ namespace Utils {
     // PowerShell single-quoted string literal. Call this on ANY value
     // interpolated into a PS single-quoted string, even "trusted" table data.
     std::wstring EscapePsSingleQuote(const std::wstring& s);
+
+    // Writes to a backup file atomically: creates a .tmp file, calls the writer
+    // callback to populate it, flushes/closes, then renames over the target.
+    // If the process crashes mid-write, the original backup is preserved.
+    // Returns true on success, false on failure (logs a warning).
+    bool WriteBackupAtomic(const std::wstring& path,
+                           const std::function<bool(std::ofstream&)>& writer);
 }

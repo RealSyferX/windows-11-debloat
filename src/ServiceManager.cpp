@@ -121,25 +121,32 @@ static bool QueryStartType(SC_HANDLE svc_h, DWORD& outStartType) {
 void ServiceManager::DisableAll() {
     Utils::PrintHeader("Disabling telemetry services...");
 
-    // Open the backup file once (truncate) so each DisableAll run produces a
-    // fresh snapshot of the original start types. EnableAll() reads this back.
+    // Snapshot all original start types to the backup file atomically: write
+    // to a .tmp file, then rename over the target. If the process crashes
+    // mid-write, the original backup is preserved. The backup is only
+    // replaced if the full write succeeds. EnableAll() reads this back.
     std::wstring backupPath = Utils::GetDebloatDataDir() + L"service_backup.txt";
-    std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
-    if (!backup.is_open())
-        Utils::PrintWarning("Could not open service backup file — start types will not be saved.");
+    bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
+        for (const auto& s : GetTelemetryServices()) {
+            SC_HANDLE scm, svc_h;
+            if (!OpenSvc(s, SERVICE_QUERY_CONFIG, scm, svc_h))
+                continue;  // service not found — no backup line
+            DWORD origStart = 0;
+            if (QueryStartType(svc_h, origStart))
+                backup << Utils::WideToString(s.name) << "|" << origStart << "\n";
+            CloseServiceHandle(svc_h);
+            CloseServiceHandle(scm);
+        }
+        return true;
+    });
+    if (!backupOk)
+        Utils::PrintWarning("Could not write service backup file — start types will not be saved.");
 
     for (const auto& s : GetTelemetryServices()) {
         SC_HANDLE scm, svc_h;
         if (!OpenSvc(s, SERVICE_STOP | SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG | SERVICE_CHANGE_CONFIG, scm, svc_h)) {
             std::cout << "  [--] " << s.displayName << " — not found\n";
             continue;
-        }
-        // Back up the original start type BEFORE changing it, so EnableAll()
-        // can restore it exactly.
-        if (backup.is_open()) {
-            DWORD origStart = 0;
-            if (QueryStartType(svc_h, origStart))
-                backup << Utils::WideToString(s.name) << "|" << origStart << "\n";
         }
         StopAndWait(svc_h);
         BOOL ok = ChangeServiceConfigW(svc_h, SERVICE_NO_CHANGE, SERVICE_DISABLED,
@@ -149,10 +156,6 @@ void ServiceManager::DisableAll() {
         if (ok) std::cout << "  [OK] " << s.displayName << " — stopped & disabled\n";
         else    std::cout << "  [!!] " << s.displayName << " — disable failed (err "
                           << GetLastError() << ")\n";
-    }
-    if (backup.is_open()) {
-        backup.flush();
-        backup.close();
     }
     Utils::PrintSuccess("Telemetry services disabled.");
     Utils::LogAction("SERVICE", "Disabled " +

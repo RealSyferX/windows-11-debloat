@@ -97,10 +97,12 @@ void PerformanceManager::ApplyAll() {
     // Record the original state of the three reversible tweaks so Revert()
     // can restore them exactly. The other three tweaks (temp cleanup, WU
     // cache, DISM /ResetBase) are irreversible and not backed up.
+    // The backup is written atomically: a .tmp file is populated, then renamed
+    // over the target. If the process crashes mid-write, the original backup
+    // is preserved.
     {
         std::wstring backupPath = Utils::GetDebloatDataDir() + L"perf_backup.txt";
-        std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
-        if (backup.is_open()) {
+        bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
             backup << "hibernation|" << (IsHibernationOn() ? "on" : "off") << "\n";
             DWORD hbVal = 0;
             if (ReadHiberbootEnabled(hbVal))
@@ -109,11 +111,10 @@ void PerformanceManager::ApplyAll() {
                 backup << "hiberbootEnabled|missing\n";
             std::string guid = GetActivePowerPlanGuid();
             backup << "powerPlan|" << (guid.empty() ? "unknown" : guid) << "\n";
-            backup.flush();
-            backup.close();
-        } else {
-            Utils::PrintWarning("Could not open performance backup file -- reversible tweaks will not be restorable.");
-        }
+            return true;
+        });
+        if (!backupOk)
+            Utils::PrintWarning("Could not write performance backup file -- reversible tweaks will not be restorable.");
     }
 
     // --- PowerShell script with honest per-step success/failure reporting ---

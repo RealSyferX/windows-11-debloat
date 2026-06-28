@@ -267,22 +267,19 @@ void TelemetryManager::ApplyAll() {
     Utils::PrintHeader("Applying telemetry registry tweaks...");
     const auto& t = GetRegistryTweaks();
 
-    // Open the backup file once (truncate) so each ApplyAll run produces a
-    // fresh snapshot of the original values. Revert() reads this back.
+    // Snapshot all original registry values to the backup file atomically:
+    // write to a .tmp file, then rename over the target. If the process
+    // crashes mid-write, the original backup is preserved. The backup is only
+    // replaced if the full write succeeds. Revert() reads this back.
     std::wstring backupPath = Utils::GetDebloatDataDir() + L"reg_backup.txt";
-    std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
-    if (!backup.is_open())
-        Utils::PrintWarning("Could not open registry backup file — original values will not be saved.");
-
-    int ok = 0;
-    for (const auto& tw : t) {
-        // --- Snapshot the current value BEFORE overwriting it ----------------
-        // RegGetValueW opens the key read-only internally and returns the raw
-        // type + bytes (RRF_NOEXPAND keeps REG_EXPAND_SZ unexpanded). A missing
-        // value (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND) is recorded as
-        // "did not exist" so Revert() can delete the value we are about to
-        // create, restoring Microsoft's default.
-        if (backup.is_open()) {
+    bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
+        for (const auto& tw : t) {
+            // --- Snapshot the current value BEFORE overwriting it ------------
+            // RegGetValueW opens the key read-only internally and returns the
+            // raw type + bytes (RRF_NOEXPAND keeps REG_EXPAND_SZ unexpanded). A
+            // missing value (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND) is
+            // recorded as "did not exist" so Revert() can delete the value we
+            // are about to create, restoring Microsoft's default.
             DWORD origType = 0;
             DWORD origSize = 0;
             LONG qr = RegGetValueW(tw.rootKey, tw.subKey.c_str(),
@@ -318,7 +315,13 @@ void TelemetryManager::ApplyAll() {
                    << "|" << HexEncode(origData)
                    << "\n";
         }
+        return true;
+    });
+    if (!backupOk)
+        Utils::PrintWarning("Could not write registry backup file — original values will not be saved.");
 
+    int ok = 0;
+    for (const auto& tw : t) {
         // --- Apply the tweak (existing logic) --------------------------------
         HKEY hKey = NULL;
         DWORD disp = 0;
@@ -340,10 +343,6 @@ void TelemetryManager::ApplyAll() {
         RegCloseKey(hKey);
         if (r == ERROR_SUCCESS) { std::cout << "  [OK] " << tw.description << "\n"; ok++; }
         else                     std::cout << "  [!!] " << tw.description << " — set failed (err " << r << ")\n";
-    }
-    if (backup.is_open()) {
-        backup.flush();
-        backup.close();
     }
     Utils::PrintSuccess("Applied " + std::to_string(ok) + "/" +
         std::to_string(t.size()) + " registry tweaks.");
