@@ -39,7 +39,9 @@ const std::vector<std::wstring>& HostsManager::GetBlockedDomains() {
     return domains;
 }
 
-static const wchar_t* MARKER = L"# ===== RealSyferX Debloat — Telemetry Block =====";
+// Narrow (byte-oriented) marker: the hosts file is ANSI/UTF-8 narrow bytes,
+// never UTF-16. /utf-8 is set in CMake so the em dash encodes correctly.
+static const char* MARKER = "# ===== RealSyferX Debloat — Telemetry Block =====";
 static const wchar_t* HOSTS_PATH = L"C:\\Windows\\System32\\drivers\\etc\\hosts";
 
 void HostsManager::List() {
@@ -54,31 +56,37 @@ void HostsManager::List() {
 void HostsManager::Apply() {
     Utils::PrintHeader("Blocking telemetry domains in hosts file...");
 
-    std::wifstream fin(HOSTS_PATH);
-    std::wstring content((std::istreambuf_iterator<wchar_t>(fin)),
-                          std::istreambuf_iterator<wchar_t>());
+    // Read the hosts file as raw bytes (binary) — no codecvt translation.
+    // The real hosts file is ANSI/UTF-8 narrow bytes, never UTF-16.
+    std::ifstream fin(HOSTS_PATH, std::ios::binary);
+    if (!fin) {
+        Utils::PrintWarning("Could not open hosts file for reading (missing or locked). Proceeding with append.");
+    }
+    std::string content((std::istreambuf_iterator<char>(fin)),
+                         std::istreambuf_iterator<char>());
     fin.close();
 
-    if (content.find(MARKER) != std::wstring::npos) {
+    if (content.find(MARKER) != std::string::npos) {
         std::cout << "  [--] Telemetry block already applied. Skipping.\n";
         Utils::PrintWarning("Hosts block already present — no changes made.");
         return;
     }
 
-    std::wostringstream block;
-    block << L"\n\n" << MARKER << L"\n";
-    block << L"# Blocking known Microsoft telemetry endpoints\n";
-    block << L"# Remove these lines to restore\n";
+    std::ostringstream block;
+    block << "\n\n" << MARKER << "\n";
+    block << "# Blocking known Microsoft telemetry endpoints\n";
+    block << "# Remove these lines to restore\n";
     for (const auto& d : GetBlockedDomains())
-        block << L"0.0.0.0 " << d << L"\n";
-    block << L"# ===== End RealSyferX Debloat =====\n";
+        block << "0.0.0.0 " << Utils::WideToString(d) << "\n";
+    block << "# ===== End RealSyferX Debloat =====\n";
 
-    std::wofstream fout(HOSTS_PATH, std::ios::app);
+    std::ofstream fout(HOSTS_PATH, std::ios::binary | std::ios::app);
     if (!fout.is_open()) {
         Utils::PrintError("Failed to open hosts file for writing.");
         return;
     }
     fout << block.str();
+    fout.flush();
     fout.close();
 
     std::cout << "  [OK] Blocked " << GetBlockedDomains().size()
