@@ -605,6 +605,66 @@ static void TestPerfBackupParse() {
     }
 }
 
+// -- PerformanceManager power plan GUID parsing --------------------------------
+// Tests the pure parsing logic extracted from GetActivePowerPlanGuid(). The
+// helper parses "powercfg /getactivescheme" output, searching for "GUID:",
+// skipping whitespace, extracting a 36-char GUID, and validating the
+// 8-4-4-4-12 hex format (dashes at positions 8, 13, 18, 23). This was
+// extracted to a public static method (mirroring ParseBackup/FormatBackupLine,
+// HostsManager::RemoveBlock/HasBlock, and TelemetryManager::SplitEscaped/...)
+// so it can be tested without invoking PowerShell.
+
+static void TestParsePowerPlanGuid() {
+    const std::string validGuid = "381b4222-f694-41f0-9685-ff5bb260df2e";
+
+    // Normal powercfg output: "Power Scheme GUID: <guid>  (SchemeName)".
+    {
+        std::string out = "Power Scheme GUID: " + validGuid + "  (Balanced)";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out) == validGuid);
+    }
+
+    // No "GUID:" marker in the output -> empty string.
+    {
+        std::string out = "No power scheme information available.\n";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out).empty());
+    }
+
+    // Truncated output: GUID shorter than 36 chars after the marker.
+    {
+        std::string out = "Power Scheme GUID: 381b4222-f694-41f0";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out).empty());
+    }
+
+    // Invalid hex chars in a hex position -> empty string.
+    {
+        std::string out = "Power Scheme GUID: 381b4222-f694-g1f0-9685-ff5bb260df2e  (Balanced)";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out).empty());
+    }
+
+    // Missing dash at an expected position (hex char where dash belongs).
+    {
+        std::string out = "Power Scheme GUID: 381b4222af694-41f0-9685-ff5bb260df2e  (Balanced)";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out).empty());
+    }
+
+    // Uppercase hex (A-F) is accepted -> returns the uppercase GUID.
+    {
+        std::string out = "Power Scheme GUID: 381B4222-F694-41F0-9685-FF5BB260DF2E  (Balanced)";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out) == "381B4222-F694-41F0-9685-FF5BB260DF2E");
+    }
+
+    // Extra whitespace after "GUID:" is correctly skipped.
+    {
+        std::string out = "Power Scheme GUID:      \t  " + validGuid + "  (Balanced)";
+        CHECK(PerformanceManager::ParsePowerPlanGuid(out) == validGuid);
+    }
+
+    // Empty string input -> empty string.
+    {
+        CHECK(PerformanceManager::ParsePowerPlanGuid("").empty());
+    }
+}
+
 // -- ServiceManager backup line parsing ----------------------------------------
 // Tests the pure parsing logic extracted from EnableAll(). The backup file is
 // line-delimited ("name|startType"); ParseServiceLine turns one line into a
@@ -793,6 +853,7 @@ int main() {
     TestFullBackupRecordRoundTrip();
     TestRootKeyValidation();
     TestPerfBackupParse();
+    TestParsePowerPlanGuid();
     TestServiceBackupParse();
 
     if (g_failures == 0) {

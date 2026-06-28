@@ -45,29 +45,12 @@ static bool ReadHiberbootEnabled(DWORD& outValue) {
 // Run powercfg /getactivescheme and parse the GUID from the output. The output
 // looks like: "Power Scheme GUID: 381b4222-f694-4f7c-978e-ea2cd5f4d93e  (Balanced)"
 // Returns an empty string if the GUID could not be parsed or PowerShell failed.
+// The parsing logic lives in ParsePowerPlanGuid() so it can be unit tested
+// without invoking PowerShell.
 static std::string GetActivePowerPlanGuid() {
     auto r = Utils::RunPowerShell(L"powercfg /getactivescheme\n", 15000);
     if (!r.ok) return "";
-    const std::string& s = r.out;
-    size_t pos = s.find("GUID:");
-    if (pos == std::string::npos) return "";
-    pos += 5;  // skip "GUID:"
-    while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t')) ++pos;
-    if (pos + 36 > s.size()) return "";
-    std::string guid = s.substr(pos, 36);
-    // Validate: 8hex-4hex-4hex-4hex-12hex
-    for (int i = 0; i < 36; ++i) {
-        char c = guid[i];
-        if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (c != '-') return "";
-        } else {
-            if (!((c >= '0' && c <= '9') ||
-                  (c >= 'a' && c <= 'f') ||
-                  (c >= 'A' && c <= 'F')))
-                return "";
-        }
-    }
-    return guid;
+    return PerformanceManager::ParsePowerPlanGuid(r.out);
 }
 
 void PerformanceManager::List() {
@@ -244,6 +227,35 @@ PerfBackup PerformanceManager::ParseBackup(const std::string& content) {
 
 std::string PerformanceManager::FormatBackupLine(const std::string& key, const std::string& value) {
     return key + "|" + value + "\n";
+}
+
+// -- Power plan GUID parsing --------------------------------------------------
+// Extracted from GetActivePowerPlanGuid() so the parsing logic can be unit
+// tested without invoking PowerShell. Mirrors the pattern used by the backup
+// helpers above and by HostsManager (RemoveBlock/HasBlock) and TelemetryManager
+// (EscapeField/SplitEscaped/HexEncode/HexDecode).
+
+std::string PerformanceManager::ParsePowerPlanGuid(const std::string& powercfgOutput) {
+    const std::string& s = powercfgOutput;
+    size_t pos = s.find("GUID:");
+    if (pos == std::string::npos) return "";
+    pos += 5;  // skip "GUID:"
+    while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t')) ++pos;
+    if (pos + 36 > s.size()) return "";
+    std::string guid = s.substr(pos, 36);
+    // Validate: 8hex-4hex-4hex-4hex-12hex
+    for (int i = 0; i < 36; ++i) {
+        char c = guid[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (c != '-') return "";
+        } else {
+            if (!((c >= '0' && c <= '9') ||
+                  (c >= 'a' && c <= 'f') ||
+                  (c >= 'A' && c <= 'F')))
+                return "";
+        }
+    }
+    return guid;
 }
 
 void PerformanceManager::Revert() {

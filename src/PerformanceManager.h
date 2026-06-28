@@ -26,4 +26,9 @@ public:
 
     // Serializes one key|value line for round-trip testing.
     static std::string FormatBackupLine(const std::string& key, const std::string& value);
+
+    // Parses a GUID from powercfg /getactivescheme output. Extracted from
+    // GetActivePowerPlanGuid() so the parsing logic can be unit tested.
+    // Returns the 36-char GUID string, or empty string if not found/invalid.
+    static std::string ParsePowerPlanGuid(const std::string& powercfgOutput);
 };
