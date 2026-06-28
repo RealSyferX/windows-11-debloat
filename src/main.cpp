@@ -7,6 +7,7 @@
 #include "PerformanceManager.h"
 #include <iostream>
 #include <string>
+#include <limits>
 
 static void PrintBanner() {
     static const char* banner[][7] = {
@@ -114,95 +115,153 @@ int main(int argc, char* argv[]) {
     Utils::LogAction("SESSION_START", "Debloat v" + Utils::GetVersion());
 
     while (true) {
-        PrintMenu();
-        std::cout << "  > ";
-        std::string choice;
-        std::getline(std::cin, choice);
+        try {
+            PrintMenu();
+            std::cout << "  > ";
+            std::string choice;
+            std::getline(std::cin, choice);
 
-        if (!std::cin) {
-            std::cout << "\n  EOF detected. Exiting.\n";
-            break;
-        }
-
-        // Log the menu selection for the audit trail before executing it.
-        Utils::LogAction("MENU", std::string("option ") + choice + " - " + MenuDescription(choice));
-
-        if (choice == "0") {
-            std::cout << "\n  Goodbye.\n";
-            break;
-        } else if (choice == "1") {
-            if (Utils::AskYesNo("\n  Remove ALL bloatware apps?"))
-                AppxManager::RemoveAll();
-        } else if (choice == "2") {
-            if (Utils::AskYesNo("\n  Remove OneDrive?"))
-                AppxManager::RemoveOneDrive();
-        } else if (choice == "3") {
-            if (Utils::AskYesNo("\n  Disable ALL telemetry services?"))
-                ServiceManager::DisableAll();
-        } else if (choice == "4") {
-            Utils::PrintWarning("Deleting services is aggressive and harder to reverse.");
-            if (Utils::AskYesNo("\n  Delete ALL telemetry services?"))
-                ServiceManager::DeleteAll();
-        } else if (choice == "5") {
-            if (Utils::AskYesNo("\n  Apply ALL telemetry & privacy registry tweaks?"))
-                TelemetryManager::ApplyAll();
-        } else if (choice == "6") {
-            if (Utils::AskYesNo("\n  Disable ALL scheduled telemetry tasks?"))
-                ScheduledTaskManager::DisableAll();
-        } else if (choice == "7") {
-            if (Utils::AskYesNo("\n  Block telemetry domains in hosts file?"))
-                HostsManager::Apply();
-        } else if (choice == "8") {
-            if (Utils::AskYesNo("\n  Apply performance tweaks & disk cleanup?"))
-                PerformanceManager::ApplyAll();
-        } else if (choice == "9") {
-            Utils::PrintInfo("Creating system restore point...");
-            Utils::CreateRestorePoint();
-        } else if (choice == "10") {
-            AppxManager::List();
-            ServiceManager::List();
-            TelemetryManager::List();
-            ScheduledTaskManager::List();
-            HostsManager::List();
-            PerformanceManager::List();
-        } else if (choice == "11") {
-            if (Utils::AskYesNo("\n  Revert telemetry block in hosts file?"))
-                HostsManager::Revert();
-        } else if (choice == "12") {
-            if (Utils::AskYesNo("\n  Re-enable ALL scheduled telemetry tasks?"))
-                ScheduledTaskManager::EnableAll();
-        } else if (choice == "13") {
-            Utils::PrintWarning("This will remove apps, OneDrive, disable services, apply registry tweaks,");
-            Utils::PrintWarning("disable scheduled tasks, block telemetry domains, and run performance tweaks.");
-            if (Utils::AskYesNo("\n  Proceed with FULL debloat?")) {
-                Utils::LogAction("RUN_ALL", "Starting full debloat");
-                Utils::PrintInfo("Creating a System Restore Point before proceeding...");
-                Utils::CreateRestorePoint();
-                if (!Utils::AskYesNo("  Restore point attempted. Continue with full debloat?")) {
-                    Utils::PrintInfo("Aborted. No changes were made.");
-                } else {
-                    AppxManager::RemoveAll();
-                    AppxManager::RemoveOneDrive();
-                    ServiceManager::DisableAll();
-                    ScheduledTaskManager::DisableAll();
-                    HostsManager::Apply();
-                    TelemetryManager::ApplyAll();
-                    PerformanceManager::ApplyAll();
-                    Utils::LogAction("RUN_ALL", "Full debloat complete");
-                    Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
-                }
+            if (!std::cin) {
+                std::cout << "\n  EOF detected. Exiting.\n";
+                break;
             }
-        } else if (choice == "14") {
-            if (Utils::AskYesNo("\n  Re-enable ALL telemetry services?"))
-                ServiceManager::EnableAll();
-        } else if (choice == "15") {
-            if (Utils::AskYesNo("\n  Revert ALL registry tweaks from backup?"))
-                TelemetryManager::Revert();
-        } else if (choice == "16") {
-            if (Utils::AskYesNo("\n  Revert performance tweaks (hibernation, fast startup, power plan)?"))
-                PerformanceManager::Revert();
-        } else {
-            Utils::PrintError("Invalid option.");
+
+            // Log the menu selection for the audit trail before executing it.
+            Utils::LogAction("MENU", std::string("option ") + choice + " - " + MenuDescription(choice));
+
+            if (choice == "0") {
+                std::cout << "\n  Goodbye.\n";
+                break;
+            } else if (choice == "1") {
+                if (Utils::AskYesNo("\n  Remove ALL bloatware apps?"))
+                    AppxManager::RemoveAll();
+            } else if (choice == "2") {
+                if (Utils::AskYesNo("\n  Remove OneDrive?"))
+                    AppxManager::RemoveOneDrive();
+            } else if (choice == "3") {
+                if (Utils::AskYesNo("\n  Disable ALL telemetry services?"))
+                    ServiceManager::DisableAll();
+            } else if (choice == "4") {
+                Utils::PrintWarning("Deleting services is aggressive and harder to reverse.");
+                if (Utils::AskYesNo("\n  Delete ALL telemetry services?"))
+                    ServiceManager::DeleteAll();
+            } else if (choice == "5") {
+                if (Utils::AskYesNo("\n  Apply ALL telemetry & privacy registry tweaks?"))
+                    TelemetryManager::ApplyAll();
+            } else if (choice == "6") {
+                if (Utils::AskYesNo("\n  Disable ALL scheduled telemetry tasks?"))
+                    ScheduledTaskManager::DisableAll();
+            } else if (choice == "7") {
+                if (Utils::AskYesNo("\n  Block telemetry domains in hosts file?"))
+                    HostsManager::Apply();
+            } else if (choice == "8") {
+                if (Utils::AskYesNo("\n  Apply performance tweaks & disk cleanup?"))
+                    PerformanceManager::ApplyAll();
+            } else if (choice == "9") {
+                Utils::PrintInfo("Creating system restore point...");
+                Utils::CreateRestorePoint();
+            } else if (choice == "10") {
+                AppxManager::List();
+                ServiceManager::List();
+                TelemetryManager::List();
+                ScheduledTaskManager::List();
+                HostsManager::List();
+                PerformanceManager::List();
+            } else if (choice == "11") {
+                if (Utils::AskYesNo("\n  Revert telemetry block in hosts file?"))
+                    HostsManager::Revert();
+            } else if (choice == "12") {
+                if (Utils::AskYesNo("\n  Re-enable ALL scheduled telemetry tasks?"))
+                    ScheduledTaskManager::EnableAll();
+            } else if (choice == "13") {
+                Utils::PrintWarning("This will remove apps, OneDrive, disable services, apply registry tweaks,");
+                Utils::PrintWarning("disable scheduled tasks, block telemetry domains, and run performance tweaks.");
+                if (Utils::AskYesNo("\n  Proceed with FULL debloat?")) {
+                    Utils::LogAction("RUN_ALL", "Starting full debloat");
+                    Utils::PrintInfo("Creating a System Restore Point before proceeding...");
+                    Utils::CreateRestorePoint();
+                    if (!Utils::AskYesNo("  Restore point attempted. Continue with full debloat?")) {
+                        Utils::PrintInfo("Aborted. No changes were made.");
+                    } else {
+                        // Each RUN ALL step is isolated so a failure in one
+                        // manager does not skip the remaining steps.
+                        try { AppxManager::RemoveAll(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Appx removal failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL Appx failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Appx removal failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL Appx failed: unknown exception");
+                        }
+                        try { AppxManager::RemoveOneDrive(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("OneDrive removal failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL OneDrive failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("OneDrive removal failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL OneDrive failed: unknown exception");
+                        }
+                        try { ServiceManager::DisableAll(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Service disable failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL Services failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Service disable failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL Services failed: unknown exception");
+                        }
+                        try { ScheduledTaskManager::DisableAll(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Scheduled task disable failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL ScheduledTasks failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Scheduled task disable failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL ScheduledTasks failed: unknown exception");
+                        }
+                        try { HostsManager::Apply(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Hosts block failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL Hosts failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Hosts block failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL Hosts failed: unknown exception");
+                        }
+                        try { TelemetryManager::ApplyAll(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Telemetry tweaks failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL Telemetry failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Telemetry tweaks failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL Telemetry failed: unknown exception");
+                        }
+                        try { PerformanceManager::ApplyAll(); } catch (const std::exception& e) {
+                            Utils::PrintError(std::string("Performance tweaks failed: ") + e.what());
+                            Utils::LogAction("ERROR", std::string("RUN_ALL Performance failed: ") + e.what());
+                        } catch (...) {
+                            Utils::PrintError("Performance tweaks failed: unknown error.");
+                            Utils::LogAction("ERROR", "RUN_ALL Performance failed: unknown exception");
+                        }
+                        Utils::LogAction("RUN_ALL", "Full debloat complete");
+                        Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
+                    }
+                }
+            } else if (choice == "14") {
+                if (Utils::AskYesNo("\n  Re-enable ALL telemetry services?"))
+                    ServiceManager::EnableAll();
+            } else if (choice == "15") {
+                if (Utils::AskYesNo("\n  Revert ALL registry tweaks from backup?"))
+                    TelemetryManager::Revert();
+            } else if (choice == "16") {
+                if (Utils::AskYesNo("\n  Revert performance tweaks (hibernation, fast startup, power plan)?"))
+                    PerformanceManager::Revert();
+            } else {
+                Utils::PrintError("Invalid option.");
+            }
+        } catch (const std::exception& e) {
+            Utils::PrintError(std::string("Unexpected error: ") + e.what());
+            Utils::LogAction("ERROR", std::string("Exception: ") + e.what());
+            std::cout << "\n  Press Enter to continue...";
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            continue;
+        } catch (...) {
+            Utils::PrintError("Unknown error occurred.");
+            Utils::LogAction("ERROR", "Unknown exception");
+            std::cout << "\n  Press Enter to continue...";
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            continue;
         }
     }
     Utils::LogAction("SESSION_END", "Debloat tool exited");
