@@ -58,7 +58,8 @@ void PerformanceManager::ApplyAll() {
 
         L"Write-Host 'All performance tweaks applied.'\n";
 
-    std::string out = Utils::RunPowerShell(script);
-    if (!out.empty()) std::cout << out;
-    Utils::PrintSuccess("Performance tweaks & disk cleanup complete.");
+    auto r = Utils::RunPowerShell(script);
+    if (!r.out.empty()) std::cout << r.out;
+    if (r.ok) Utils::PrintSuccess("Performance tweaks & disk cleanup complete.");
+    else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");
 }

@@ -91,9 +91,11 @@ void HostsManager::Apply() {
 
     std::cout << "  [OK] Blocked " << GetBlockedDomains().size()
               << " telemetry domains in hosts file.\n";
-    Utils::PrintSuccess("Hosts file updated. DNS cache flushed.");
 
-    Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+    auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+    if (!r.out.empty()) std::cout << r.out;
+    if (r.ok) Utils::PrintSuccess("Hosts file updated. DNS cache flushed.");
+    else      Utils::PrintError("Hosts file updated, but PowerShell failed to flush DNS cache.");
 }
 
 void HostsManager::Revert() {
@@ -151,7 +153,9 @@ void HostsManager::Revert() {
     fout.close();
 
     std::cout << "  [OK] Hosts block reverted.\n";
-    Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
 
-    Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+    auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
+    if (!r.out.empty()) std::cout << r.out;
+    if (r.ok) Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
+    else      Utils::PrintError("Hosts block removed, but PowerShell failed to flush DNS cache.");
 }

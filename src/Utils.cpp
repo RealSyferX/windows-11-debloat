@@ -47,10 +47,10 @@ std::string WideToString(const std::wstring& ws) {
     return s;
 }
 
-std::string RunPowerShell(const std::wstring& script) {
+PowerShellResult RunPowerShell(const std::wstring& script) {
     wchar_t tempDir[MAX_PATH];
     if (GetTempPathW(MAX_PATH, tempDir) == 0)
-        return "";
+        return { false, "" };
 
     // GetTempFileNameW with uUnique=0 atomically creates a zero-length file
     // with a unique, non-predictable name derived from the system time. This
@@ -62,7 +62,7 @@ std::string RunPowerShell(const std::wstring& script) {
     if (GetTempFileNameW(tempDir, L"dbl", 0, ps1Path) == 0) {
         PrintError("RunPowerShell: GetTempFileNameW failed (GLE=" +
             std::to_string(GetLastError()) + ")");
-        return "";
+        return { false, "" };
     }
 
     // RAII scope guard: delete the temp file on scope exit, even if an
@@ -77,7 +77,7 @@ std::string RunPowerShell(const std::wstring& script) {
     HANDLE hFile = CreateFileW(ps1Path, GENERIC_WRITE, 0, NULL,
         CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
-        return "";
+        return { false, "" };
 
     DWORD wr = 0;
     const BYTE bom[2] = { 0xFF, 0xFE };
@@ -96,9 +96,11 @@ std::string RunPowerShell(const std::wstring& script) {
         while (fgets(buf, sizeof(buf), pipe))
             result += buf;
         _pclose(pipe);
+        return { true, result };
     }
 
-    return result;
+    // _wpopen failed: PowerShell never ran.
+    return { false, "" };
 }
 
 void SetColor(WORD attr) {
@@ -129,7 +131,7 @@ bool CreateRestorePoint() {
     // etc.) so the user is not falsely told a safety net exists. We use
     // -ErrorAction Stop so the error becomes terminating and the try/catch can
     // capture it, then emit a honest [OK]/[!!] marker the C++ side keys off.
-    std::string out = RunPowerShell(
+    auto r = RunPowerShell(
         L"Enable-ComputerRestore -Drive 'C:\\' -ErrorAction SilentlyContinue; "
         L"$ok = $true; $errMsg = ''; "
         L"try { Checkpoint-Computer -Description 'Before Debloat' "
@@ -138,6 +140,14 @@ bool CreateRestorePoint() {
         L"if ($ok) { Write-Host '[OK] Restore point created.' } "
         L"else { Write-Host ('[!!] Failed: ' + $errMsg) }"
     );
+    // If PowerShell itself could not be launched, there is no honest result to
+    // parse — report failure immediately rather than treating empty output as
+    // a parseable payload.
+    if (!r.ok) {
+        PrintError("Failed to create restore point: PowerShell could not be launched.");
+        return false;
+    }
+    std::string out = r.out;
     // Trim trailing whitespace/newlines so the colored printers don't double-up.
     while (!out.empty() && (out.back() == '\n' || out.back() == '\r' ||
                             out.back() == ' '  || out.back() == '\t'))
