@@ -54,6 +54,7 @@ if(BUILD_TESTING)
         src/ScheduledTaskManager.cpp
         src/HostsManager.cpp
         src/TelemetryManager.cpp
+        src/PerformanceManager.cpp
         src/Utils.cpp
     )
     target_include_directories(debloat_tests PRIVATE src)

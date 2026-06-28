@@ -20,6 +20,7 @@
 #include "ScheduledTaskManager.h"
 #include "HostsManager.h"
 #include "TelemetryManager.h"
+#include "PerformanceManager.h"
 #include "Utils.h"
 
 #include <iostream>
@@ -508,6 +509,90 @@ static void TestFullBackupRecordRoundTrip() {
     CHECK(bad.size() != 7);
 }
 
+// -- PerformanceManager backup parsing ----------------------------------------
+// Tests the pure parsing logic extracted from Revert(). The backup file is
+// pipe-delimited (key|value lines); ParseBackup turns the full content into a
+// PerfBackup struct. FormatBackupLine serializes one line for round-trip
+// testing. These were extracted to public static methods (mirroring
+// HostsManager::RemoveBlock/HasBlock and TelemetryManager::SplitEscaped/...)
+// so they can be tested without touching the filesystem or registry.
+
+static void TestPerfBackupParse() {
+    // Normal three-line backup: all three keys present and recovered.
+    {
+        std::string content =
+            PerformanceManager::FormatBackupLine("hibernation", "on") +
+            PerformanceManager::FormatBackupLine("hiberbootEnabled", "1") +
+            PerformanceManager::FormatBackupLine("powerPlan", "381b4222-f694-41f0-9685-ff5bb260df2e");
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hibernation == "on");
+        CHECK(p.hiberbootEnabled == "1");
+        CHECK(p.powerPlan == "381b4222-f694-41f0-9685-ff5bb260df2e");
+    }
+
+    // CRLF line endings: same content with \r\n -> still parses correctly.
+    {
+        std::string content =
+            "hibernation|on\r\n"
+            "hiberbootEnabled|1\r\n"
+            "powerPlan|381b4222-f694-41f0-9685-ff5bb260df2e\r\n";
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hibernation == "on");
+        CHECK(p.hiberbootEnabled == "1");
+        CHECK(p.powerPlan == "381b4222-f694-41f0-9685-ff5bb260df2e");
+    }
+
+    // Empty/malformed lines: blank lines and lines without a pipe are skipped
+    // without crashing.
+    {
+        std::string content =
+            "\n"
+            "hibernation|on\n"
+            "\n"
+            "this line has no pipe\n"
+            "hiberbootEnabled|0\n"
+            "\n"
+            "powerPlan|balanced\n";
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hibernation == "on");
+        CHECK(p.hiberbootEnabled == "0");
+        CHECK(p.powerPlan == "balanced");
+    }
+
+    // Missing keys: only hibernation present -> other fields are empty.
+    {
+        std::string content = PerformanceManager::FormatBackupLine("hibernation", "on");
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hibernation == "on");
+        CHECK(p.hiberbootEnabled.empty());
+        CHECK(p.powerPlan.empty());
+    }
+
+    // GUID round-trip: a real power plan GUID survives parsing exactly.
+    {
+        const std::string guid = "381b4222-f694-41f0-9685-ff5bb260df2e";
+        std::string content = PerformanceManager::FormatBackupLine("powerPlan", guid);
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.powerPlan == guid);
+    }
+
+    // "missing" value preserved literally -- Revert uses this sentinel to
+    // delete the registry value rather than restore it.
+    {
+        std::string content = PerformanceManager::FormatBackupLine("hiberbootEnabled", "missing");
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hiberbootEnabled == "missing");
+    }
+
+    // Empty content -> all fields empty.
+    {
+        auto p = PerformanceManager::ParseBackup("");
+        CHECK(p.hibernation.empty());
+        CHECK(p.hiberbootEnabled.empty());
+        CHECK(p.powerPlan.empty());
+    }
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -525,6 +610,7 @@ int main() {
     TestHexDecodeMalformed();
     TestSplitEscapedEdgeCases();
     TestFullBackupRecordRoundTrip();
+    TestPerfBackupParse();
 
     if (g_failures == 0) {
         std::cout << "All tests passed.\n";

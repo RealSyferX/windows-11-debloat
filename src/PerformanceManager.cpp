@@ -2,6 +2,7 @@
 #include "Utils.h"
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 // -- Backup helpers ----------------------------------------------------------
@@ -215,6 +216,35 @@ void PerformanceManager::ApplyAll() {
         "PowerShell failed to execute -- changes may not have applied.");
 }
 
+// -- Pure backup parsing helpers ---------------------------------------------
+// Extracted from Revert() so the pipe-delimited parsing logic can be unit
+// tested without touching the filesystem or registry. Mirrors the pattern used
+// by HostsManager (RemoveBlock/HasBlock) and TelemetryManager
+// (EscapeField/SplitEscaped/HexEncode/HexDecode).
+
+PerfBackup PerformanceManager::ParseBackup(const std::string& content) {
+    PerfBackup result;
+    std::istringstream iss(content);
+    std::string line;
+    while (std::getline(iss, line)) {
+        // Tolerate CRLF line endings.
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        size_t bar = line.find('|');
+        if (bar == std::string::npos) continue;  // malformed line -- skip
+        std::string key = line.substr(0, bar);
+        std::string val = line.substr(bar + 1);
+        if (key == "hibernation")            result.hibernation = val;
+        else if (key == "hiberbootEnabled")  result.hiberbootEnabled = val;
+        else if (key == "powerPlan")         result.powerPlan = val;
+    }
+    return result;
+}
+
+std::string PerformanceManager::FormatBackupLine(const std::string& key, const std::string& value) {
+    return key + "|" + value + "\n";
+}
+
 void PerformanceManager::Revert() {
     Utils::PrintHeader("Reverting performance tweaks from backup...");
 
@@ -225,26 +255,18 @@ void PerformanceManager::Revert() {
         return;
     }
 
-    std::string hibernationState, hiberbootVal, powerPlanGuid;
-    std::string line;
-    while (std::getline(fin, line)) {
-        // Tolerate CRLF line endings.
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty()) continue;
-        size_t bar = line.find('|');
-        if (bar == std::string::npos) continue;
-        std::string key = line.substr(0, bar);
-        std::string val = line.substr(bar + 1);
-        if (key == "hibernation")            hibernationState = val;
-        else if (key == "hiberbootEnabled")  hiberbootVal = val;
-        else if (key == "powerPlan")         powerPlanGuid = val;
-    }
+    // Read the entire backup file and parse it with the pure helper so the
+    // parsing logic is shared with the unit tests.
+    std::string content((std::istreambuf_iterator<char>(fin)),
+                         std::istreambuf_iterator<char>());
     fin.close();
+
+    PerfBackup parsed = ParseBackup(content);
 
     int restored = 0, failed = 0;
 
     // 1. Re-enable hibernation (only if it was on before ApplyAll turned it off)
-    if (hibernationState == "on") {
+    if (parsed.hibernation == "on") {
         std::cout << "  Re-enabling hibernation...\n";
         auto r = Utils::RunPowerShell(
             L"powercfg /h on\n"
@@ -258,12 +280,12 @@ void PerformanceManager::Revert() {
             if (!r.out.empty()) std::cout << r.out;
             ++failed;
         }
-    } else if (hibernationState == "off") {
+    } else if (parsed.hibernation == "off") {
         std::cout << "  [--] Hibernation was already off -- skipping\n";
     }
 
     // 2. Restore HiberbootEnabled (fast startup) via registry API
-    if (!hiberbootVal.empty()) {
+    if (!parsed.hiberbootEnabled.empty()) {
         std::cout << "  Restoring fast startup setting...\n";
         HKEY hKey = NULL;
         LONG r = RegCreateKeyExW(HKEY_LOCAL_MACHINE,
@@ -272,7 +294,7 @@ void PerformanceManager::Revert() {
         if (r != ERROR_SUCCESS) {
             std::cout << "  [!!] Fast startup -- open key failed (err " << r << ")\n";
             ++failed;
-        } else if (hiberbootVal == "missing") {
+        } else if (parsed.hiberbootEnabled == "missing") {
             // Value did not exist before ApplyAll -- delete what we created
             r = RegDeleteValueW(hKey, L"HiberbootEnabled");
             if (r == ERROR_SUCCESS || r == ERROR_FILE_NOT_FOUND) {
@@ -284,7 +306,7 @@ void PerformanceManager::Revert() {
             }
         } else {
             DWORD val = 1;  // default to enabled if parse fails
-            try { val = static_cast<DWORD>(std::stoul(hiberbootVal)); }
+            try { val = static_cast<DWORD>(std::stoul(parsed.hiberbootEnabled)); }
             catch (...) { val = 1; }
             r = RegSetValueExW(hKey, L"HiberbootEnabled", 0, REG_DWORD,
                 reinterpret_cast<const BYTE*>(&val), sizeof(val));
@@ -300,9 +322,9 @@ void PerformanceManager::Revert() {
     }
 
     // 3. Restore power plan to the original GUID
-    if (!powerPlanGuid.empty() && powerPlanGuid != "unknown") {
-        std::cout << "  Restoring power plan to " << powerPlanGuid << "...\n";
-        std::wstring psGuid = Utils::StringToWide(powerPlanGuid);
+    if (!parsed.powerPlan.empty() && parsed.powerPlan != "unknown") {
+        std::cout << "  Restoring power plan to " << parsed.powerPlan << "...\n";
+        std::wstring psGuid = Utils::StringToWide(parsed.powerPlan);
         std::wstring script = L"powercfg -setactive " + psGuid + L"\n"
             L"if ($LASTEXITCODE -eq 0) { Write-Host '__OK__' } else { Write-Host '__FAIL__' }\n";
         auto r = Utils::RunPowerShell(script, 30000);
@@ -314,7 +336,7 @@ void PerformanceManager::Revert() {
             if (!r.out.empty()) std::cout << r.out;
             ++failed;
         }
-    } else if (powerPlanGuid == "unknown") {
+    } else if (parsed.powerPlan == "unknown") {
         std::cout << "  [--] Original power plan unknown -- skipping\n";
     }
 
