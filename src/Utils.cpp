@@ -52,10 +52,29 @@ std::string RunPowerShell(const std::wstring& script) {
     if (GetTempPathW(MAX_PATH, tempDir) == 0)
         return "";
 
-    std::wstring ps1 = std::wstring(tempDir) + L"debloat_" +
-        std::to_wstring(GetTickCount64()) + L".ps1";
+    // GetTempFileNameW with uUnique=0 atomically creates a zero-length file
+    // with a unique, non-predictable name derived from the system time. This
+    // replaces the predictable "debloat_<GetTickCount64>.ps1" scheme and
+    // prevents an attacker who can write to %TEMP% from pre-placing a
+    // symlink/hardlink to trick this elevated process into overwriting an
+    // arbitrary file (privileged-write TOCTOU/symlink attack).
+    wchar_t ps1Path[MAX_PATH];
+    if (GetTempFileNameW(tempDir, L"dbl", 0, ps1Path) == 0) {
+        PrintError("RunPowerShell: GetTempFileNameW failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        return "";
+    }
 
-    HANDLE hFile = CreateFileW(ps1.c_str(), GENERIC_WRITE, 0, NULL,
+    // RAII scope guard: delete the temp file on scope exit, even if an
+    // exception is thrown mid-execution (e.g. bad_alloc during output capture).
+    struct TempFileGuard {
+        const wchar_t* path;
+        ~TempFileGuard() { if (path) DeleteFileW(path); }
+    } guard{ ps1Path };
+
+    // GetTempFileNameW just created a brand-new, uniquely-named file; reopen it
+    // with CREATE_ALWAYS (truncate) and write the UTF-16LE payload + BOM.
+    HANDLE hFile = CreateFileW(ps1Path, GENERIC_WRITE, 0, NULL,
         CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
         return "";
@@ -68,7 +87,7 @@ std::string RunPowerShell(const std::wstring& script) {
     CloseHandle(hFile);
 
     std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \""
-        + ps1 + L"\" 2>&1";
+        + std::wstring(ps1Path) + L"\" 2>&1";
 
     FILE* pipe = _wpopen(cmd.c_str(), L"r");
     std::string result;
@@ -79,7 +98,6 @@ std::string RunPowerShell(const std::wstring& script) {
         _pclose(pipe);
     }
 
-    DeleteFileW(ps1.c_str());
     return result;
 }
 
