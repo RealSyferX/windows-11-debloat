@@ -126,13 +126,16 @@ bool AskYesNo(const std::string& prompt) {
 
 bool CreateRestorePoint() {
     // Enable-ComputerRestore may error if System Restore is already enabled on
-    // the drive; that is harmless, so silence it. Checkpoint-Computer, however,
-    // must surface real failures (disabled SR, disk full, group-policy block,
-    // etc.) so the user is not falsely told a safety net exists. We use
-    // -ErrorAction Stop so the error becomes terminating and the try/catch can
-    // capture it, then emit a honest [OK]/[!!] marker the C++ side keys off.
+    // the drive; that is harmless, so silence it. The drive letter is derived
+    // from %SystemRoot% (e.g. "C:" or "D:") rather than hardcoded, so SR is
+    // enabled on the correct drive on systems where Windows is not on C:.
+    // Checkpoint-Computer, however, must surface real failures (disabled SR,
+    // disk full, group-policy block, etc.) so the user is not falsely told a
+    // safety net exists. We use -ErrorAction Stop so the error becomes
+    // terminating and the try/catch can capture it, then emit a honest
+    // [OK]/[!!] marker the C++ side keys off.
     auto r = RunPowerShell(
-        L"Enable-ComputerRestore -Drive 'C:\\' -ErrorAction SilentlyContinue; "
+        L"Enable-ComputerRestore -Drive $env:SystemRoot.Substring(0,2) -ErrorAction SilentlyContinue; "
         L"$ok = $true; $errMsg = ''; "
         L"try { Checkpoint-Computer -Description 'Before Debloat' "
         L"-RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop } "

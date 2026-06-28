@@ -42,7 +42,18 @@ const std::vector<std::wstring>& HostsManager::GetBlockedDomains() {
 // Narrow (byte-oriented) marker: the hosts file is ANSI/UTF-8 narrow bytes,
 // never UTF-16. /utf-8 is set in CMake so the em dash encodes correctly.
 static const char* MARKER = "# ===== RealSyferX Debloat — Telemetry Block =====";
-static const wchar_t* HOSTS_PATH = L"C:\\Windows\\System32\\drivers\\etc\\hosts";
+
+// Returns the real hosts-file path using the actual system directory, so the
+// tool works even when Windows is installed on a drive other than C: (common
+// in dual-boot, enterprise imaging, and some OEM setups). std::ifstream /
+// std::ofstream do not expand %SystemRoot%, so the path must be resolved here.
+// Falls back to the classic C:\Windows\... path if GetSystemDirectoryW fails.
+static std::wstring GetHostsPath() {
+    wchar_t sysDir[MAX_PATH];
+    if (GetSystemDirectoryW(sysDir, MAX_PATH) == 0)
+        return L"C:\\Windows\\System32\\drivers\\etc\\hosts"; // safe fallback
+    return std::wstring(sysDir) + L"\\drivers\\etc\\hosts";
+}
 
 void HostsManager::List() {
     Utils::PrintHeader("Telemetry domains to block in hosts file:");
@@ -56,9 +67,11 @@ void HostsManager::List() {
 void HostsManager::Apply() {
     Utils::PrintHeader("Blocking telemetry domains in hosts file...");
 
+    const std::wstring hostsPath = GetHostsPath();
+
     // Read the hosts file as raw bytes (binary) — no codecvt translation.
     // The real hosts file is ANSI/UTF-8 narrow bytes, never UTF-16.
-    std::ifstream fin(HOSTS_PATH, std::ios::binary);
+    std::ifstream fin(hostsPath.c_str(), std::ios::binary);
     if (!fin) {
         Utils::PrintWarning("Could not open hosts file for reading (missing or locked). Proceeding with append.");
     }
@@ -80,7 +93,7 @@ void HostsManager::Apply() {
         block << "0.0.0.0 " << Utils::WideToString(d) << "\n";
     block << "# ===== End RealSyferX Debloat =====\n";
 
-    std::ofstream fout(HOSTS_PATH, std::ios::binary | std::ios::app);
+    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::app);
     if (!fout.is_open()) {
         Utils::PrintError("Failed to open hosts file for writing.");
         return;
@@ -101,8 +114,10 @@ void HostsManager::Apply() {
 void HostsManager::Revert() {
     Utils::PrintHeader("Reverting telemetry hosts block...");
 
+    const std::wstring hostsPath = GetHostsPath();
+
     // Read the hosts file as raw bytes (binary) — consistent with Apply().
-    std::ifstream fin(HOSTS_PATH, std::ios::binary);
+    std::ifstream fin(hostsPath.c_str(), std::ios::binary);
     if (!fin) {
         Utils::PrintError("Could not open hosts file for reading.");
         return;
@@ -143,7 +158,7 @@ void HostsManager::Revert() {
         content.erase(removeStart, endLineEnd - removeStart);
     }
 
-    std::ofstream fout(HOSTS_PATH, std::ios::binary | std::ios::trunc);
+    std::ofstream fout(hostsPath.c_str(), std::ios::binary | std::ios::trunc);
     if (!fout.is_open()) {
         Utils::PrintError("Failed to open hosts file for writing.");
         return;
