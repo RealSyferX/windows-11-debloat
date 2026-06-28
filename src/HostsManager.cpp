@@ -71,12 +71,40 @@ void HostsManager::Apply() {
 
     // Read the hosts file as raw bytes (binary) — no codecvt translation.
     // The real hosts file is ANSI/UTF-8 narrow bytes, never UTF-16.
+    std::string content;
     std::ifstream fin(hostsPath.c_str(), std::ios::binary);
     if (!fin) {
-        Utils::PrintWarning("Could not open hosts file for reading (missing or locked). Proceeding with append.");
+        // ifstream could not open the file. Distinguish between "file does
+        // not exist" (safe: create a new one with just the telemetry block)
+        // and "file exists but is locked/unreadable" (dangerous: the atomic
+        // write would replace it with ONLY the telemetry block, destroying
+        // all existing user/custom hosts entries). GetFileAttributesW checks
+        // existence without opening the file. This mirrors Revert()'s safe
+        // abort-on-read-failure behavior and avoids silent data loss.
+        DWORD attrs = GetFileAttributesW(hostsPath.c_str());
+        if (attrs == INVALID_FILE_ATTRIBUTES) {
+            DWORD err = GetLastError();
+            if (err == ERROR_FILE_NOT_FOUND) {
+                // File doesn't exist — safe to proceed; the atomic write
+                // will create a new hosts file with the telemetry block.
+                Utils::PrintInfo("Hosts file not found. Creating a new one with telemetry block.");
+            } else {
+                // GetFileAttributesW failed for another reason (e.g. path
+                // not found, access denied). Abort to avoid data loss.
+                Utils::PrintError("Could not determine hosts file state. Aborting to prevent data loss.");
+                return;
+            }
+        } else {
+            // The file exists but ifstream could not open it (likely locked
+            // by antivirus or another process). Abort rather than overwrite.
+            Utils::PrintError("Hosts file exists but cannot be read. Aborting to prevent data loss.");
+            return;
+        }
+        // content remains empty (safe: file genuinely doesn't exist).
+    } else {
+        content.assign((std::istreambuf_iterator<char>(fin)),
+                        std::istreambuf_iterator<char>());
     }
-    std::string content((std::istreambuf_iterator<char>(fin)),
-                         std::istreambuf_iterator<char>());
     fin.close();
 
     if (HasBlock(content)) {
