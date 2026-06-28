@@ -12,10 +12,10 @@ A standalone C++ tool. No background processes. No setup. No telemetry of its ow
 
 | | Count | Details |
 |---|---|---|
-| **Apps Removed** | 38 | Bing, Copilot, Solitaire, Clipchamp, Teams, Outlook, Widgets, Cortana, Mail & Calendar, People, and more |
-| **Services Disabled** | 20 | DiagTrack (telemetry), Error Reporting, WAP Push, Xbox services, Remote Registry, Parental Controls, etc. |
+| **Apps Removed** | 39 | Bing, Copilot, Solitaire, Clipchamp, Teams, Outlook, Widgets, Cortana, Mail & Calendar, People, and more |
+| **Services Disabled** | 19 | DiagTrack (telemetry), Error Reporting, WAP Push, Xbox services, Remote Registry, Parental Controls, etc. |
 | **Scheduled Tasks** | 17 | Compatibility Appraiser, CEIP, WER queue, Maps, Feedback, Disk Diagnostics, Power Efficiency |
-| **Registry Tweaks** | 48+ | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, dark mode, background apps off, Copilot off, fast startup off |
+| **Registry Tweaks** | 45 | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, dark mode, background apps off, Copilot off, fast startup off |
 | **Hosts Blocked** | 29 | Telemetry domains blocked at DNS level (vortex.data.microsoft.com, watson.telemetry.microsoft.com, etc.) |
 | **Performance** | 6 | Disable hibernation, disable fast startup, High Performance power plan, clean temp/WU cache/WinSxS |
 | **OneDrive** | Nuked | Uninstalled, folders cleaned, startup removed, sync blocked by policy |
@@ -82,7 +82,7 @@ This tool is surgical. It does **not** touch:
 
 | Without Debloat | With Debloat |
 |---|---|
-| 38+ bloatware apps pre-installed | Apps removed — won't reinstall |
+| 39 bloatware apps pre-installed | Apps removed — won't reinstall |
 | DiagTrack sending telemetry to Microsoft | Service stopped & disabled |
 | 17 scheduled tasks collecting telemetry | All disabled |
 | 29 telemetry domains reachable | Blocked in hosts file |
@@ -96,7 +96,7 @@ This tool is surgical. It does **not** touch:
 | Background apps running | Disabled globally |
 | Light mode default | Dark mode enabled |
 | Hibernation wasting GBs of disk | Disabled |
-| ~20 services wasting CPU & RAM | Zero overhead |
+| ~19 services wasting CPU & RAM | Zero overhead |
 | WinSxS bloat accumulating | Component store cleaned |
 
 ## Tech
@@ -110,6 +110,10 @@ This tool is surgical. It does **not** touch:
 - Hosts file edited directly (idempotent — marker comment prevents duplicates)
 - Registry tweaks via `RegCreateKeyExW` / `RegSetValueExW`
 - Performance via `powercfg`, `DISM /StartComponentCleanup /ResetBase`
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Disclaimer
 
