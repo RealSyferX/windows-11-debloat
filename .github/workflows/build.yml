@@ -6,11 +6,22 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: cmake-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/**/*.cpp', 'src/**/*.h') }}
+          restore-keys: |
+            cmake-build-${{ runner.os }}-
       - name: Configure CMake
         run: cmake -B build -G "Visual Studio 17 2022" -DBUILD_TESTING=ON
       - name: Build

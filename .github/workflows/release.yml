@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
@@ -12,6 +16,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: cmake-build-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/**/*.cpp', 'src/**/*.h') }}
+          restore-keys: |
+            cmake-build-${{ runner.os }}-
 
       - name: Configure CMake
         run: cmake -B build -G "Visual Studio 17 2022" -DBUILD_TESTING=ON
