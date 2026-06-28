@@ -321,7 +321,10 @@ void PerformanceManager::Revert() {
             // Parse the original HiberbootEnabled value. The idx check rejects
             // trailing garbage (e.g. "1abc" would silently parse as 1 without
             // it) — the entire string must be consumed. On parse failure we
-            // skip the write entirely rather than guessing a default value.
+            // skip the write entirely rather than guessing a default value:
+            // the backup is ACL-protected (Admins/SYSTEM only, via
+            // CreateSecureDirectory) so corruption is unlikely, but guessing
+            // wrong would silently enable a feature the user had disabled.
             DWORD val = 0;
             bool parsedOk = false;
             try {
@@ -330,8 +333,8 @@ void PerformanceManager::Revert() {
                 parsedOk = (idx == parsed.hiberbootEnabled.size());
             } catch (...) { parsedOk = false; }
             if (!parsedOk) {
-                std::cout << "  [!!] Fast startup -- cannot parse value \""
-                          << parsed.hiberbootEnabled << "\" -- skipping\n";
+                Utils::PrintWarning("  [!!] Fast startup -- could not parse backup value \""
+                    + parsed.hiberbootEnabled + "\" -- skipping");
                 ++failed;
             } else {
                 r = RegSetValueExW(hKey, L"HiberbootEnabled", 0, REG_DWORD,
