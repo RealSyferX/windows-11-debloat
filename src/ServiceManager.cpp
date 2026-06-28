@@ -1,6 +1,7 @@
 #include "ServiceManager.h"
 #include "Utils.h"
 #include <iostream>
+#include <fstream>
 
 const std::vector<TelemetryService>& ServiceManager::GetTelemetryServices() {
     static const std::vector<TelemetryService> svcs = {
@@ -101,13 +102,60 @@ static void StopAndWait(SC_HANDLE svc_h) {
     }
 }
 
+// Returns the full path to the service backup file at
+// %ProgramData%\Debloat\service_backup.txt. Creates the directory if it does
+// not exist (idempotent — ERROR_ALREADY_EXISTS is ignored by CreateDirectoryW).
+// Falls back to C:\ProgramData\Debloat\ if %ProgramData% is unset/unavailable.
+static std::wstring GetBackupFilePath() {
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
+    std::wstring dir;
+    if (len == 0 || len >= MAX_PATH)
+        dir = L"C:\\ProgramData\\Debloat\\";   // safe fallback
+    else
+        dir = std::wstring(buf) + L"\\Debloat\\";
+    CreateDirectoryW(dir.c_str(), NULL);
+    return dir + L"service_backup.txt";
+}
+
+// Queries the current start type (SERVICE_BOOT_START, SERVICE_SYSTEM_START,
+// SERVICE_AUTO_START, SERVICE_DEMAND_START, SERVICE_DISABLED) of an open
+// service handle. Returns false if the query fails.
+static bool QueryStartType(SC_HANDLE svc_h, DWORD& outStartType) {
+    DWORD needed = 0;
+    // First call always fails with ERROR_INSUFFICIENT_BUFFER but sets 'needed'.
+    QueryServiceConfigW(svc_h, NULL, 0, &needed);
+    if (needed == 0) return false;
+    std::vector<BYTE> buf(needed);
+    auto cfg = reinterpret_cast<QUERY_SERVICE_CONFIGW*>(buf.data());
+    if (!QueryServiceConfigW(svc_h, cfg, needed, &needed))
+        return false;
+    outStartType = cfg->dwStartType;
+    return true;
+}
+
 void ServiceManager::DisableAll() {
     Utils::PrintHeader("Disabling telemetry services...");
+
+    // Open the backup file once (truncate) so each DisableAll run produces a
+    // fresh snapshot of the original start types. EnableAll() reads this back.
+    std::wstring backupPath = GetBackupFilePath();
+    std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
+    if (!backup.is_open())
+        Utils::PrintWarning("Could not open service backup file — start types will not be saved.");
+
     for (const auto& s : GetTelemetryServices()) {
         SC_HANDLE scm, svc_h;
-        if (!OpenSvc(s, SERVICE_STOP | SERVICE_QUERY_STATUS | SERVICE_CHANGE_CONFIG, scm, svc_h)) {
+        if (!OpenSvc(s, SERVICE_STOP | SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG | SERVICE_CHANGE_CONFIG, scm, svc_h)) {
             std::cout << "  [--] " << s.displayName << " — not found\n";
             continue;
+        }
+        // Back up the original start type BEFORE changing it, so EnableAll()
+        // can restore it exactly.
+        if (backup.is_open()) {
+            DWORD origStart = 0;
+            if (QueryStartType(svc_h, origStart))
+                backup << Utils::WideToString(s.name) << "|" << origStart << "\n";
         }
         StopAndWait(svc_h);
         BOOL ok = ChangeServiceConfigW(svc_h, SERVICE_NO_CHANGE, SERVICE_DISABLED,
@@ -117,6 +165,10 @@ void ServiceManager::DisableAll() {
         if (ok) std::cout << "  [OK] " << s.displayName << " — stopped & disabled\n";
         else    std::cout << "  [!!] " << s.displayName << " — disable failed (err "
                           << GetLastError() << ")\n";
+    }
+    if (backup.is_open()) {
+        backup.flush();
+        backup.close();
     }
     Utils::PrintSuccess("Telemetry services disabled.");
 }
@@ -140,4 +192,74 @@ void ServiceManager::DeleteAll() {
                           << GetLastError() << ")\n";
     }
     Utils::PrintSuccess("Telemetry service deletion requested.");
+}
+
+void ServiceManager::EnableAll() {
+    Utils::PrintHeader("Re-enabling telemetry services from backup...");
+
+    std::wstring backupPath = GetBackupFilePath();
+    std::ifstream fin(backupPath);
+    if (!fin.is_open()) {
+        std::cout << "  [--] No service backup found — nothing to revert.\n";
+        return;
+    }
+
+    SC_HANDLE scm = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
+    if (!scm) {
+        Utils::PrintError("Failed to open Service Control Manager.");
+        return;
+    }
+
+    int restored = 0, notFound = 0, failed = 0;
+    std::string line;
+    while (std::getline(fin, line)) {
+        if (line.empty()) continue;
+        // Parse <service-name>|<startType>
+        size_t bar = line.find('|');
+        if (bar == std::string::npos) continue;
+        std::string nameStr = line.substr(0, bar);
+        std::string typeStr = line.substr(bar + 1);
+
+        DWORD startType = 0;
+        try {
+            startType = static_cast<DWORD>(std::stoul(typeStr));
+        } catch (...) {
+            continue;
+        }
+
+        std::wstring svcName = Utils::StringToWide(nameStr);
+        SC_HANDLE svc_h = OpenServiceW(scm, svcName.c_str(),
+            SERVICE_START | SERVICE_QUERY_STATUS | SERVICE_CHANGE_CONFIG);
+        if (!svc_h) {
+            std::cout << "  [--] " << nameStr << " — not found / no backup\n";
+            ++notFound;
+            continue;
+        }
+        BOOL ok = ChangeServiceConfigW(svc_h, SERVICE_NO_CHANGE, startType,
+            SERVICE_NO_CHANGE, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+        if (ok) {
+            std::cout << "  [OK] " << nameStr << " — restored (start=" << startType << ")\n";
+            ++restored;
+            // Start the service now only if it was auto-start or boot-start;
+            // don't start services that were originally disabled/manual.
+            if (startType == SERVICE_AUTO_START || startType == SERVICE_BOOT_START)
+                StartServiceW(svc_h, 0, NULL);
+        } else {
+            std::cout << "  [!!] " << nameStr << " — restore failed (err "
+                      << GetLastError() << ")\n";
+            ++failed;
+        }
+        CloseServiceHandle(svc_h);
+    }
+    fin.close();
+    CloseServiceHandle(scm);
+
+    std::cout << "\n  Summary: " << restored << " restored, " << notFound
+              << " not found, " << failed << " failed.\n";
+    if (failed == 0 && notFound == 0 && restored > 0)
+        Utils::PrintSuccess("Telemetry services re-enabled from backup.");
+    else if (restored > 0)
+        Utils::PrintWarning("Service restore completed with some issues.");
+    else
+        Utils::PrintError("No services could be restored.");
 }

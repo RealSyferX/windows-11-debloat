@@ -14,4 +14,5 @@ public:
     static void List();
     static void DisableAll();
     static void DeleteAll();
+    static void EnableAll();   // Revert: restore previously-disabled services
 };

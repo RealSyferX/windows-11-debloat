@@ -55,6 +55,7 @@ static void PrintMenu() {
         "  11) Revert: unblock telemetry domains (hosts)\n"
         "  12) Revert: re-enable scheduled tasks\n"
         "  13) RUN ALL  (everything)\n"
+        "  14) Revert: re-enable telemetry services\n"
         "   0) Exit\n";
 }
 
@@ -151,6 +152,9 @@ int main() {
                     Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
                 }
             }
+        } else if (choice == "14") {
+            if (Utils::AskYesNo("\n  Re-enable ALL telemetry services?"))
+                ServiceManager::EnableAll();
         } else {
             Utils::PrintError("Invalid option.");
         }

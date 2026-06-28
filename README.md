@@ -44,7 +44,8 @@ Output: `build\Release\Debloat.exe`
 1. Run `Debloat.exe` as administrator (UAC auto-prompts)
 2. Press **9** to create a System Restore Point
 3. Press **13** to RUN ALL — or pick individual options 1–10
-4. Reboot
+4. Use options 11, 12, or 14 to revert specific changes if needed
+5. Reboot
 
 ```
    1) Remove bloatware apps (UWP/MSIX)
@@ -57,13 +58,14 @@ Output: `build\Release\Debloat.exe`
    8) Performance tweaks (power, cleanup)
    9) Create System Restore Point
   10) List all targets (preview)
-  11) Revert: unblock telemetry domains (hosts)
-  12) Revert: re-enable scheduled tasks
-  13) RUN ALL  (everything)
-   0) Exit
+   11) Revert: unblock telemetry domains (hosts)
+   12) Revert: re-enable scheduled tasks
+   13) RUN ALL  (everything)
+   14) Revert: re-enable telemetry services
+    0) Exit
 ```
 
-> Options **11** and **12** are non-destructive reverts — they undo the hosts-file block and re-enable the disabled scheduled tasks respectively, giving you a quick escape hatch without restoring a whole-system snapshot.
+> Options **11**, **12**, and **14** are non-destructive reverts — they undo the hosts-file block, re-enable the disabled scheduled tasks, and restore previously-disabled telemetry services respectively, giving you a quick escape hatch without restoring a whole-system snapshot. Option 14 reads a start-type backup written by option 3, so it restores the exact configuration that existed before disabling.
 
 ## What Stays Untouched
 
