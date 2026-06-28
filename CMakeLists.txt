@@ -8,7 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS UNICODE _UNICODE NOMINMAX)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 /utf-8")
+    # /W4          : highest warning level
+    # /permissive- : strict standards-conformance mode (reject non-standard MSVC constructs)
+    # /WX          : treat warnings as errors (enforce zero-warning builds)
+    # /utf-8       : source + execution charset is UTF-8
+    add_compile_options(/W4 /permissive- /WX /utf-8)
 endif()
 
 add_executable(Debloat
@@ -60,8 +64,5 @@ if(BUILD_TESTING)
     target_include_directories(debloat_tests PRIVATE src)
     target_compile_features(debloat_tests PRIVATE cxx_std_17)
     target_compile_definitions(debloat_tests PRIVATE DEBLOAT_VERSION="${DEBLOAT_VERSION}")
-    if(MSVC)
-        target_compile_options(debloat_tests PRIVATE /utf-8)
-    endif()
     target_link_libraries(debloat_tests PRIVATE advapi32 shell32)
 endif()
