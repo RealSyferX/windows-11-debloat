@@ -171,6 +171,15 @@ std::optional<std::string> HostsManager::RemoveBlock(std::string content) {
         // Truncated block — no end marker. Erase from start marker to EOF.
         content.erase(start);
     } else {
+        // If the end marker appears before the start marker (corrupt/malformed
+        // file), treat it as a truncated block — erase from start marker to EOF.
+        // Without this guard, endLineEnd - removeStart would underflow (both
+        // are size_t) and std::string::erase would throw std::out_of_range.
+        if (end < start) {
+            content.erase(start);
+            return content;
+        }
+
         // Both markers found — erase from start marker through the end of
         // the end-marker line (including its trailing newline).
         size_t endLineEnd = end + std::string(END_MARKER).size();

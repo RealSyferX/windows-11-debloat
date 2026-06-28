@@ -228,6 +228,17 @@ static void TestHostsRemoveBlock() {
         auto second = HostsManager::RemoveBlock(*first);
         CHECK(!second.has_value());
     }
+
+    // End marker before start marker (corrupt file) — must not crash,
+    // must erase from start marker to EOF.
+    {
+        std::string content = std::string("pre\n") +
+            HostsManager::END_MARKER + "\nmiddle\n" +
+            HostsManager::MARKER + "\n0.0.0.0 x\n";
+        auto result = HostsManager::RemoveBlock(content);
+        CHECK(result.has_value());
+        CHECK(*result == "pre\n" + std::string(HostsManager::END_MARKER) + "\nmiddle\n");
+    }
 }
 
 static void TestHostsHasBlock() {
