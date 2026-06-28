@@ -86,9 +86,26 @@ PowerShellResult RunPowerShell(const std::wstring& script,
 
     DWORD wr = 0;
     const BYTE bom[2] = { 0xFF, 0xFE };
-    WriteFile(hFile, bom, 2, &wr, NULL);
-    WriteFile(hFile, script.c_str(),
-        static_cast<DWORD>(script.size() * sizeof(wchar_t)), &wr, NULL);
+    // WriteFile can fail partway (disk full, antivirus lock, memory pressure),
+    // leaving the temp .ps1 truncated or empty. If we launched PowerShell
+    // against such a file we'd capture a parse error in `out` but still return
+    // {true, out} — falsely reporting success when the script never ran. Guard
+    // both writes by checking the BOOL return AND the byte count actually
+    // written. GetLastError() is captured before CloseHandle so the diagnostic
+    // reflects the WriteFile failure, not the handle teardown.
+    if (!WriteFile(hFile, bom, 2, &wr, NULL) || wr != 2) {
+        PrintError("RunPowerShell: WriteFile (BOM) failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        CloseHandle(hFile);
+        return { false, "" };
+    }
+    DWORD expected = static_cast<DWORD>(script.size() * sizeof(wchar_t));
+    if (!WriteFile(hFile, script.c_str(), expected, &wr, NULL) || wr != expected) {
+        PrintError("RunPowerShell: WriteFile (script) failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        CloseHandle(hFile);
+        return { false, "" };
+    }
     CloseHandle(hFile);
 
     // --- Create anonymous pipe for child stdout+stderr ----------------------
