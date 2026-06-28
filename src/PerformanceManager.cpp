@@ -60,7 +60,7 @@ void PerformanceManager::ApplyAll() {
 
         L"Write-Host 'All performance tweaks applied.'\n";
 
-    auto r = Utils::RunPowerShell(script);
+    auto r = Utils::RunPowerShell(script, 900000);  // 15 minutes for DISM
     if (!r.out.empty()) std::cout << r.out;
     if (r.ok) Utils::PrintSuccess("Performance tweaks & disk cleanup complete.");
     else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");

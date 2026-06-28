@@ -47,7 +47,8 @@ std::string WideToString(const std::wstring& ws) {
     return s;
 }
 
-PowerShellResult RunPowerShell(const std::wstring& script) {
+PowerShellResult RunPowerShell(const std::wstring& script,
+                                DWORD timeoutMs) {
     wchar_t tempDir[MAX_PATH];
     if (GetTempPathW(MAX_PATH, tempDir) == 0)
         return { false, "" };
@@ -86,21 +87,140 @@ PowerShellResult RunPowerShell(const std::wstring& script) {
         static_cast<DWORD>(script.size() * sizeof(wchar_t)), &wr, NULL);
     CloseHandle(hFile);
 
-    std::wstring cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \""
-        + std::wstring(ps1Path) + L"\" 2>&1";
+    // --- Create anonymous pipe for child stdout+stderr ----------------------
+    // The pipe write end must be inheritable so the child can write to it; the
+    // read end must NOT be inherited (otherwise it would keep the pipe open in
+    // the parent and ReadFile would never see EOF).
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle = TRUE;
 
-    FILE* pipe = _wpopen(cmd.c_str(), L"r");
-    std::string result;
-    if (pipe) {
-        char buf[512];
-        while (fgets(buf, sizeof(buf), pipe))
-            result += buf;
-        _pclose(pipe);
-        return { true, result };
+    HANDLE pipeRead = NULL, pipeWrite = NULL;
+    if (!CreatePipe(&pipeRead, &pipeWrite, &sa, 65536)) {
+        PrintError("RunPowerShell: CreatePipe failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        return { false, "" };
+    }
+    SetHandleInformation(pipeWrite, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+    SetHandleInformation(pipeRead,  HANDLE_FLAG_INHERIT, 0);
+
+    // --- Launch cmd.exe wrapping powershell.exe -----------------------------
+    // The cmd.exe /c wrapper lets us merge stderr into stdout via 2>&1 so a
+    // single pipe captures both streams. CREATE_NO_WINDOW prevents a console
+    // popup. hStdInput is left NULL so that any PowerShell prompt for input
+    // fails immediately instead of hanging forever.
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = pipeWrite;
+    si.hStdError  = pipeWrite;
+    si.hStdInput  = NULL;
+
+    std::wstring cmd = L"cmd.exe /c powershell.exe -NoProfile -ExecutionPolicy "
+        L"Bypass -File \"" + std::wstring(ps1Path) + L"\" 2>&1";
+
+    // CreateProcessW requires a writable command-line buffer. std::wstring
+    // data is contiguous and null-terminated; &cmd[0] yields a writable
+    // wchar_t* (guaranteed since C++11, and MSVC has always done this).
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessW(NULL, &cmd[0], NULL, NULL, TRUE,
+            CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        PrintError("RunPowerShell: CreateProcessW failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        CloseHandle(pipeRead);
+        CloseHandle(pipeWrite);
+        return { false, "" };
     }
 
-    // _wpopen failed: PowerShell never ran.
-    return { false, "" };
+    // Close the write end in the parent so EOF is signalled when the child
+    // exits (otherwise ReadFile would block forever waiting for more data).
+    CloseHandle(pipeWrite);
+
+    // --- Wait for the child with a timeout, draining the pipe ---------------
+    // We poll in short intervals instead of a single blocking
+    // WaitForSingleObject(fullTimeout) so that we can drain the pipe between
+    // polls. If the child produces more output than the pipe buffer holds, a
+    // single blocking wait would deadlock: the child blocks on write, the
+    // parent blocks on wait, and neither progresses. The drain loop prevents
+    // this while still respecting the overall timeout.
+    std::string rawBytes;
+    bool timedOut = false;
+    DWORD elapsed = 0;
+    const DWORD pollMs = 200;
+
+    // Drains all currently-available bytes from the pipe into rawBytes.
+    auto drainPipe = [&]() {
+        DWORD avail = 0;
+        while (PeekNamedPipe(pipeRead, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+            char buf[4096];
+            DWORD nRead = 0;
+            DWORD toRead = avail;
+            if (toRead > sizeof(buf)) toRead = sizeof(buf);
+            if (!ReadFile(pipeRead, buf, toRead, &nRead, NULL) || nRead == 0)
+                break;
+            rawBytes.append(buf, nRead);
+        }
+    };
+
+    while (true) {
+        drainPipe();
+
+        DWORD waitResult = WaitForSingleObject(pi.hProcess, pollMs);
+        elapsed += pollMs;
+
+        if (waitResult == WAIT_OBJECT_0) {
+            // Process exited — final drain to capture any trailing output
+            // that was written between the last poll and exit.
+            drainPipe();
+            break;
+        }
+
+        if (elapsed >= timeoutMs) {
+            timedOut = true;
+            TerminateProcess(pi.hProcess, 1);
+            // Reap the terminated process so the handle is fully released
+            // before we close it below.
+            WaitForSingleObject(pi.hProcess, 5000);
+            drainPipe();   // grab whatever was buffered before the kill
+            break;
+        }
+    }
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    CloseHandle(pipeRead);
+
+    // --- Convert raw pipe bytes to a narrow string --------------------------
+    // The script was written as UTF-16LE with BOM, so PowerShell *may* emit
+    // UTF-16LE output (it depends on $OutputEncoding). Detect the BOM and
+    // convert accordingly; if no BOM, treat the bytes as ASCII/UTF-8.
+    std::string out;
+    if (rawBytes.size() >= 2 &&
+        static_cast<unsigned char>(rawBytes[0]) == 0xFF &&
+        static_cast<unsigned char>(rawBytes[1]) == 0xFE) {
+        // UTF-16LE with BOM — skip the 2-byte BOM and convert to UTF-8.
+        const wchar_t* wsrc =
+            reinterpret_cast<const wchar_t*>(rawBytes.data() + 2);
+        int wlen = static_cast<int>((rawBytes.size() - 2) / sizeof(wchar_t));
+        int len = WideCharToMultiByte(CP_UTF8, 0, wsrc, wlen, NULL, 0, NULL, NULL);
+        if (len > 0) {
+            out.resize(len);
+            WideCharToMultiByte(CP_UTF8, 0, wsrc, wlen, &out[0], len, NULL, NULL);
+        }
+    } else {
+        // No BOM — treat as ASCII/UTF-8 directly.
+        out = rawBytes;
+    }
+
+    if (timedOut) {
+        out += "[!!] PowerShell timed out after " +
+            std::to_string(timeoutMs / 1000) +
+            "s \xE2\x80\x94 operation may be incomplete.";
+        return { false, out };
+    }
+
+    return { true, out };
 }
 
 void SetColor(WORD attr) {

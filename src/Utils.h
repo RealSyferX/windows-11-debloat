@@ -4,10 +4,12 @@
 
 namespace Utils {
 
-    // Result of a RunPowerShell call. `ok` is false only when PowerShell could
-    // not be launched at all (temp-path/file creation failure, or _wpopen
-    // returned NULL). `out` is the captured stdout/stderr; it may be empty
-    // even when ok==true (e.g. a script that writes nothing).
+    // Result of a RunPowerShell call. `ok` is false when PowerShell could not
+    // be launched at all (temp-path/file creation failure, or CreateProcessW
+    // returned FALSE) OR when the script timed out. `out` is the captured
+    // stdout/stderr; it may be empty even when ok==true (e.g. a script that
+    // writes nothing). On timeout, `out` contains whatever output was captured
+    // before the kill, followed by a timeout notice.
     struct PowerShellResult {
         bool        ok;
         std::string out;
@@ -17,7 +19,14 @@ namespace Utils {
     bool RelaunchAsAdmin();
     // Writes the script to a unique, non-predictable temp file (GetTempFileNameW)
     // and auto-deletes it via RAII when RunPowerShell returns.
-    PowerShellResult RunPowerShell(const std::wstring& script);
+    //
+    // Executes a PowerShell script with a timeout. Returns {ok, out} where
+    // ok=false if PowerShell could not be launched OR if it timed out. The out
+    // string contains captured stdout/stderr, or an error message on
+    // timeout/launch failure.
+    // timeoutMs: max milliseconds to wait (default 120000 = 2 minutes).
+    PowerShellResult RunPowerShell(const std::wstring& script,
+                                   DWORD timeoutMs = 120000);
     void SetColor(WORD attr);
     void PrintInfo(const std::string& msg);
     void PrintSuccess(const std::string& msg);
