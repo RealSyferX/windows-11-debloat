@@ -75,7 +75,7 @@ in all new and modified code:
   **zero warnings**. Warnings are treated as errors; a warning is a build
   failure.
 - **User-facing output** goes through the `Utils` print helpers:
-  `PrintInfo`, `PrintSuccess` (a.k.a. `PrintOK`), `PrintError`,
+  `PrintInfo`, `PrintSuccess`, `PrintError`,
   `PrintWarning`, and `PrintHeader`. Do not use raw `std::cout` for
   status/error messages intended for the end user.
 - **Manager classes use static methods only** — they are never instantiated.
