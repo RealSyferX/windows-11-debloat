@@ -170,10 +170,6 @@ const std::vector<RegistryTweak>& TelemetryManager::GetRegistryTweaks() {
           L"{20D04FE0-3AEA-1069-A2D8-08002B30309D}", REG_TWEAK_DWORD, 0, L"",
           "Show This PC on desktop" },
 
-        /* ---- Fast startup ---- */
-        { HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power",
-          L"HiberbootEnabled", REG_TWEAK_DWORD, 0, L"",
-          "Disable fast startup (fixes dual-boot/driver issues)" },
     };
     return t;
 }

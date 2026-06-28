@@ -24,10 +24,15 @@ target_include_directories(Debloat PRIVATE src)
 
 target_link_libraries(Debloat PRIVATE advapi32 shell32)
 
-# Auto-prompt UAC (requireAdministrator) via linker-generated manifest
+# Embed the full application manifest (UAC requireAdministrator, supportedOS
+# GUIDs for Windows 10/11, and Common-Controls v6 dependency) from app.manifest.
+# /MANIFESTUAC is kept with the same value as app.manifest's
+# requestedExecutionLevel so the linker-generated default (asInvoker) does not
+# conflict with our requireAdministrator during the manifest merge step.
+# The /MANIFESTINPUT path is quoted because CMAKE_SOURCE_DIR contains spaces.
 if(MSVC)
     set_target_properties(Debloat PROPERTIES
-        LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\""
+        LINK_FLAGS "/MANIFEST:EMBED /MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\" \"/MANIFESTINPUT:${CMAKE_SOURCE_DIR}/app.manifest\""
     )
 endif()
 

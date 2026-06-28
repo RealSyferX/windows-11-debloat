@@ -127,7 +127,7 @@ static void TestRegistryTweaks() {
     const auto& tweaks = TelemetryManager::GetRegistryTweaks();
 
     // Count
-    CHECK(tweaks.size() == 45);
+    CHECK(tweaks.size() == 44);
 
     // No duplicate (subKey, valueName) pairs - the same value name in a
     // different sub-key is a legitimate separate tweak.

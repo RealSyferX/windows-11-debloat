@@ -15,7 +15,7 @@ A standalone C++ tool. No background processes. No setup. No telemetry of its ow
 | **Apps Removed** | 39 | Bing, Copilot, Solitaire, Clipchamp, Teams, Outlook, Widgets, Cortana, Mail & Calendar, People, and more |
 | **Services Disabled** | 19 | DiagTrack (telemetry), Error Reporting, WAP Push, Xbox services, Remote Registry, Parental Controls, etc. |
 | **Scheduled Tasks** | 17 | Compatibility Appraiser, CEIP, WER queue, Maps, Feedback, Disk Diagnostics, Power Efficiency |
-| **Registry Tweaks** | 45 | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, dark mode, background apps off, Copilot off, fast startup off |
+| **Registry Tweaks** | 44 | AllowTelemetry=0, Advertising ID off, Cortana off, Bing search off, Wi-Fi Sense off, dark mode, background apps off, Copilot off |
 | **Hosts Blocked** | 29 | Telemetry domains blocked at DNS level (vortex.data.microsoft.com, watson.telemetry.microsoft.com, etc.) |
 | **Performance** | 6 | Disable hibernation, disable fast startup, High Performance power plan, clean temp/WU cache/WinSxS |
 | **OneDrive** | Nuked | Uninstalled, folders cleaned, startup removed, sync blocked by policy |
