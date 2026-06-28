@@ -263,10 +263,15 @@ bool CreateRestorePoint() {
     // safety net exists. We use -ErrorAction Stop so the error becomes
     // terminating and the try/catch can capture it, then emit a honest
     // [OK]/[!!] marker the C++ side keys off.
+    // The restore point description includes the tool version so that, when
+    // reviewing System Restore points, it is clear which version of Debloat
+    // created the point.
+    std::wstring desc = EscapePsSingleQuote(
+        L"Before Debloat v" + StringToWide(GetVersion()));
     auto r = RunPowerShell(
         L"Enable-ComputerRestore -Drive $env:SystemRoot.Substring(0,2) -ErrorAction SilentlyContinue; "
         L"$ok = $true; $errMsg = ''; "
-        L"try { Checkpoint-Computer -Description 'Before Debloat' "
+        L"try { Checkpoint-Computer -Description '" + desc + L"' "
         L"-RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop } "
         L"catch { $ok = $false; $errMsg = $_.Exception.Message }; "
         L"if ($ok) { Write-Host '[OK] Restore point created.' } "
@@ -293,6 +298,10 @@ bool CreateRestorePoint() {
         PrintError(out.empty() ? "[!!] Failed: unable to create restore point." : out);
     LogAction("RESTORE_POINT", "Created ok=" + std::to_string(success ? 1 : 0));
     return success;
+}
+
+std::string GetVersion() {
+    return DEBLOAT_VERSION;
 }
 
 std::wstring GetDebloatDataDir() {

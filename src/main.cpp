@@ -35,6 +35,7 @@ static void PrintBanner() {
     std::cout << "       Windows 11 Debloat & Anti-Spyware\n";
     std::cout << "              C++ Edition\n";
     std::cout << "             by RealSyferX\n";
+    std::cout << "               v" << DEBLOAT_VERSION << "\n";
     std::cout << "  ----------------------------------------------\n\n";
     Utils::SetColor(FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED);
 }
@@ -84,7 +85,15 @@ static const char* MenuDescription(const std::string& choice) {
     return "Invalid option";
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // --version / -V: print version and exit immediately, before any UAC
+    // elevation check or banner display, so users can check the version of
+    // a binary without being prompted for admin rights.
+    if (argc >= 2 && (std::string(argv[1]) == "--version" || std::string(argv[1]) == "-V")) {
+        std::cout << "Debloat v" << Utils::GetVersion() << "\n";
+        return 0;
+    }
+
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleTitleW(L"Windows 11 Debloat");
 
@@ -102,7 +111,7 @@ int main() {
         return 1;
     }
     Utils::PrintSuccess("Running with administrator privileges.");
-    Utils::LogAction("SESSION_START", "Debloat tool launched");
+    Utils::LogAction("SESSION_START", "Debloat v" + Utils::GetVersion());
 
     while (true) {
         PrintMenu();

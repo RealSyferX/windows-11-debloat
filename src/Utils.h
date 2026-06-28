@@ -2,6 +2,10 @@
 #include <string>
 #include <windows.h>
 
+#ifndef DEBLOAT_VERSION
+#define DEBLOAT_VERSION "unknown"
+#endif
+
 namespace Utils {
 
     // Result of a RunPowerShell call. `ok` is false when PowerShell could not
@@ -41,6 +45,9 @@ namespace Utils {
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
     bool CreateRestorePoint();
+
+    // Returns the version string (from DEBLOAT_VERSION macro).
+    std::string GetVersion();
 
     // Returns %ProgramData%\Debloat\ (creating it if missing).
     // Falls back to C:\ProgramData\Debloat\ if the env var is unavailable.

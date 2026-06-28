@@ -1,5 +1,7 @@
 # Windows 11 Debloat & Anti-Spyware
 
+**Current version: 1.0.0**
+
 **Strip out Microsoft's bloatware, kill telemetry services, block telemetry domains, and lock down your privacy — in one click.**
 
 A standalone C++ tool. No background processes. No setup. No telemetry of its own. Just a clean executable that does its job and exits.

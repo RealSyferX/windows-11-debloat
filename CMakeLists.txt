@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(Windows11Debloat CXX)
 
+set(DEBLOAT_VERSION "1.0.0" CACHE STRING "Debloat version")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -21,6 +23,8 @@ add_executable(Debloat
 )
 
 target_include_directories(Debloat PRIVATE src)
+
+target_compile_definitions(Debloat PRIVATE DEBLOAT_VERSION="${DEBLOAT_VERSION}")
 
 target_link_libraries(Debloat PRIVATE advapi32 shell32)
 
@@ -54,6 +58,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(debloat_tests PRIVATE src)
     target_compile_features(debloat_tests PRIVATE cxx_std_17)
+    target_compile_definitions(debloat_tests PRIVATE DEBLOAT_VERSION="${DEBLOAT_VERSION}")
     if(MSVC)
         target_compile_options(debloat_tests PRIVATE /utf-8)
     endif()
