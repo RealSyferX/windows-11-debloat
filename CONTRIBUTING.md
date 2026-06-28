@@ -99,6 +99,10 @@ in all new and modified code:
 - **Use `Utils::LogAction()`** for every action that modifies the system. This
   appends a timestamped entry to the persistent audit log at
   `%ProgramData%\Debloat\debloat.log`.
+- **Confirmation prompts default to No (`(y/N)`)** — destructive actions
+  require explicit confirmation. Empty input (pressing Enter) or EOF is
+  treated as No; the user must type an explicit `y` or `Y` to proceed. This
+  is a deliberate safety default for a system-modifying tool.
 
 ---
 

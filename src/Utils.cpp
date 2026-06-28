@@ -247,11 +247,11 @@ void PrintPsResult(const PowerShellResult& r,
 }
 
 bool AskYesNo(const std::string& prompt) {
-    std::cout << prompt << " (Y/n): ";
+    std::cout << prompt << " (y/N): ";
     std::string in;
     std::getline(std::cin, in);
     if (!std::cin) return false;
-    if (in.empty()) return true;
+    if (in.empty()) return false;
     return std::tolower(static_cast<unsigned char>(in[0])) == 'y';
 }
 

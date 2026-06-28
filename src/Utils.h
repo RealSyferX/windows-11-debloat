@@ -43,6 +43,8 @@ namespace Utils {
     void PrintPsResult(const PowerShellResult& r,
                        const std::string& successMsg,
                        const std::string& errorMsg);
+    // Prompts the user with a yes/no question. Defaults to No (safe default)
+    // on empty input or EOF. Requires explicit 'y' or 'Y' to confirm.
     bool AskYesNo(const std::string& prompt);
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
