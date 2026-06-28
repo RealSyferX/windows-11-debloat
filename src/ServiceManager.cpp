@@ -95,10 +95,19 @@ static void StopAndWait(SC_HANDLE svc_h) {
     SERVICE_STATUS st;
     if (!QueryServiceStatus(svc_h, &st)) return;
     if (st.dwCurrentState == SERVICE_STOPPED) return;
-    ControlService(svc_h, SERVICE_CONTROL_STOP, &st);
+    BOOL stopOk = ControlService(svc_h, SERVICE_CONTROL_STOP, &st);
+    if (!stopOk) {
+        // The service may not accept STOP controls, or the request was denied.
+        // ControlService still updates st on some failures (e.g. a race where
+        // the service stopped between our query and the control call), so if it
+        // is already stopped there is nothing to wait for. Either way we bail
+        // out: polling a state that won't change wastes up to 15 seconds per
+        // service (up to ~285 s across the 19-service list).
+        return;
+    }
     for (int i = 0; i < 30 && st.dwCurrentState != SERVICE_STOPPED; i++) {
         Sleep(500);
-        QueryServiceStatus(svc_h, &st);
+        if (!QueryServiceStatus(svc_h, &st)) break;
     }
 }
 
