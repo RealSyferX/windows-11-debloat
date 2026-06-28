@@ -263,6 +263,50 @@ std::vector<BYTE> TelemetryManager::HexDecode(const std::string& hex) {
     return out;
 }
 
+// -- Root-key validation ------------------------------------------------------
+//
+// The predefined HKEY_* handles are stable numeric constants (winnt.h). They
+// are the only values ApplyAll() ever writes to the backup, and the only
+// values Revert() should ever feed to RegCreateKeyExW. Reinterpreting any
+// other integer as an HKEY is undefined behaviour, so a corrupt or hand-edited
+// backup must be rejected rather than passed straight to the registry API.
+//
+// Subtlety: on x64, winnt.h defines the handles as
+//   ((HKEY)(ULONG_PTR)(LONG)0x80000000)
+// which sign-extends through LONG, giving e.g. HKEY_CLASSES_ROOT ==
+// 0xFFFFFFFF80000000 — NOT 0x80000000. ApplyAll writes the sign-extended
+// uintptr_t to the backup; a hand-edited backup might instead contain the
+// documented 32-bit value (0x80000000). We accept both forms but always
+// return the canonical HKEY macro so the registry API recognises the handle.
+
+bool TelemetryManager::IsValidRootKey(uintptr_t num) {
+    HKEY dummy;
+    return RootKeyFromNum(num, dummy);
+}
+
+bool TelemetryManager::RootKeyFromNum(uintptr_t num, HKEY& out) {
+    static const HKEY roots[] = {
+        HKEY_CLASSES_ROOT,       // 0x80000000  (sign-extended on x64)
+        HKEY_CURRENT_USER,       // 0x80000001
+        HKEY_LOCAL_MACHINE,     // 0x80000002
+        HKEY_USERS,             // 0x80000003
+        HKEY_PERFORMANCE_DATA,  // 0x80000004
+        HKEY_CURRENT_CONFIG     // 0x80000005
+    };
+    for (HKEY r : roots) {
+        uintptr_t rnum = reinterpret_cast<uintptr_t>(r);
+        // Accept the canonical (sign-extended on x64) form written by ApplyAll,
+        // and also the zero-extended 32-bit documented value (0x8000000N) that
+        // a hand-edited backup might contain.
+        if (num == rnum ||
+            num == (rnum & static_cast<uintptr_t>(0xFFFFFFFFu))) {
+            out = r;     // always return the canonical HKEY macro
+            return true;
+        }
+    }
+    return false;
+}
+
 void TelemetryManager::ApplyAll() {
     Utils::PrintHeader("Applying telemetry registry tweaks...");
     const auto& t = GetRegistryTweaks();
@@ -371,13 +415,19 @@ void TelemetryManager::Revert() {
         if (fields.size() != 7) continue;          // malformed record — skip
 
         // rootKeyNum -> HKEY. The predefined HKEY_* handles are stable numeric
-        // constants (e.g. HKEY_CURRENT_USER == 0x80000001), so the round-trip
-        // reinterpret_cast is exact for every key this tool touches.
+        // constants (e.g. HKEY_CURRENT_USER == 0x80000001). Only those six
+        // values are ever written by ApplyAll(); a corrupt or hand-edited
+        // backup may contain anything, so we validate against the allowlist
+        // before handing the value to RegCreateKeyExW.
         uintptr_t rootKeyNum = 0;
         try {
             rootKeyNum = static_cast<uintptr_t>(std::stoull(fields[0]));
         } catch (...) { continue; }
-        HKEY rootKey = reinterpret_cast<HKEY>(rootKeyNum);
+        HKEY rootKey = NULL;
+        if (!TelemetryManager::RootKeyFromNum(rootKeyNum, rootKey)) {
+            Utils::PrintError("Skipping record with invalid root key: " + std::to_string(rootKeyNum));
+            continue;
+        }
 
         std::wstring subKey    = Utils::StringToWide(fields[1]);
         std::wstring valueName = Utils::StringToWide(fields[2]);

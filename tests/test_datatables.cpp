@@ -24,6 +24,7 @@
 #include "Utils.h"
 
 #include <iostream>
+#include <cstdint>
 #include <optional>
 #include <set>
 #include <string>
@@ -593,6 +594,79 @@ static void TestPerfBackupParse() {
     }
 }
 
+// -- TelemetryManager root-key validation -------------------------------------
+// Tests the HKEY allowlist used by Revert() to guard against corrupt or
+// hand-edited backup files. Only the six predefined root keys are valid;
+// every other integer is rejected so it is never passed to RegCreateKeyExW.
+
+static void TestRootKeyValidation() {
+    // The six predefined root keys (winnt.h), in their documented 32-bit
+    // form (0x8000000N). These are the values a hand-edited backup might
+    // contain. All must be accepted.
+    CHECK(TelemetryManager::IsValidRootKey(0x80000000) == true);  // HKEY_CLASSES_ROOT
+    CHECK(TelemetryManager::IsValidRootKey(0x80000001) == true);  // HKEY_CURRENT_USER
+    CHECK(TelemetryManager::IsValidRootKey(0x80000002) == true);  // HKEY_LOCAL_MACHINE
+    CHECK(TelemetryManager::IsValidRootKey(0x80000003) == true);  // HKEY_USERS
+    CHECK(TelemetryManager::IsValidRootKey(0x80000004) == true);  // HKEY_PERFORMANCE_DATA
+    CHECK(TelemetryManager::IsValidRootKey(0x80000005) == true);  // HKEY_CURRENT_CONFIG
+
+    // Sign-extended form (what ApplyAll writes on x64): also accepted.
+    // On x64, winnt.h defines HKEY_* as ((HKEY)(ULONG_PTR)(LONG)0x8000000N),
+    // which sign-extends to 0xFFFFFFFF8000000N.
+    CHECK(TelemetryManager::IsValidRootKey(
+        reinterpret_cast<uintptr_t>(HKEY_CLASSES_ROOT)) == true);
+    CHECK(TelemetryManager::IsValidRootKey(
+        reinterpret_cast<uintptr_t>(HKEY_CURRENT_USER)) == true);
+    CHECK(TelemetryManager::IsValidRootKey(
+        reinterpret_cast<uintptr_t>(HKEY_LOCAL_MACHINE)) == true);
+
+    // Zero and small integers are not valid root keys.
+    CHECK(TelemetryManager::IsValidRootKey(0) == false);
+    CHECK(TelemetryManager::IsValidRootKey(1) == false);
+
+    // Just past the last valid predefined key.
+    CHECK(TelemetryManager::IsValidRootKey(0x80000006) == false);
+
+    // Arbitrary garbage.
+    CHECK(TelemetryManager::IsValidRootKey(0xDEADBEEF) == false);
+
+    // The maximum 64-bit value.
+    CHECK(TelemetryManager::IsValidRootKey(UINT64_MAX) == false);
+
+    // RootKeyFromNum: valid 32-bit input sets 'out' to the canonical HKEY.
+    {
+        HKEY out = NULL;
+        CHECK(TelemetryManager::RootKeyFromNum(0x80000002, out) == true);
+        CHECK(out == HKEY_LOCAL_MACHINE);
+    }
+    {
+        HKEY out = NULL;
+        CHECK(TelemetryManager::RootKeyFromNum(0x80000001, out) == true);
+        CHECK(out == HKEY_CURRENT_USER);
+    }
+
+    // RootKeyFromNum: sign-extended input also yields the canonical HKEY.
+    {
+        HKEY out = NULL;
+        CHECK(TelemetryManager::RootKeyFromNum(
+            reinterpret_cast<uintptr_t>(HKEY_CLASSES_ROOT), out) == true);
+        CHECK(out == HKEY_CLASSES_ROOT);
+    }
+
+    // RootKeyFromNum: invalid input returns false and leaves 'out' untouched.
+    {
+        HKEY sentinel = reinterpret_cast<HKEY>(static_cast<uintptr_t>(0xDEADBEEF));
+        HKEY out = sentinel;
+        CHECK(TelemetryManager::RootKeyFromNum(0xDEADBEEF, out) == false);
+        CHECK(out == sentinel);
+    }
+    {
+        HKEY out = NULL;
+        CHECK(TelemetryManager::RootKeyFromNum(0, out) == false);
+        CHECK(out == NULL);
+    }
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -610,6 +684,7 @@ int main() {
     TestHexDecodeMalformed();
     TestSplitEscapedEdgeCases();
     TestFullBackupRecordRoundTrip();
+    TestRootKeyValidation();
     TestPerfBackupParse();
 
     if (g_failures == 0) {

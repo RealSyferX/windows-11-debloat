@@ -43,4 +43,16 @@ public:
     // Decodes a hex string back to bytes. Malformed input (invalid hex char
     // or odd length) returns whatever was decoded so far (possibly empty).
     static std::vector<BYTE> HexDecode(const std::string& hex);
+
+    // -- Root-key validation --------------------------------------------------
+    // Revert() parses rootKeyNum from the backup file via std::stoull and must
+    // not pass an unchecked integer to RegCreateKeyExW. Only the six
+    // predefined HKEY root keys are ever written by ApplyAll(); anything else
+    // in a corrupt or hand-edited backup is rejected here (defense-in-depth).
+    //
+    // Returns true if num corresponds to a valid predefined HKEY root key.
+    static bool IsValidRootKey(uintptr_t num);
+    // Converts a validated root key number to HKEY. Returns true and sets
+    // 'out' if num is valid; returns false (and leaves 'out' untouched) if not.
+    static bool RootKeyFromNum(uintptr_t num, HKEY& out);
 };
