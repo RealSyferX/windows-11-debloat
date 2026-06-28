@@ -49,6 +49,12 @@ namespace Utils {
     // Returns the version string (from DEBLOAT_VERSION macro).
     std::string GetVersion();
 
+    // Creates a directory with Full Control for Administrators and SYSTEM only.
+    // If the directory already exists, applies the restrictive ACL to it.
+    // This prevents non-admin users from tampering with backup files that
+    // the elevated tool reads back during Revert operations.
+    bool CreateSecureDirectory(const std::wstring& path);
+
     // Returns %ProgramData%\Debloat\ (creating it if missing).
     // Falls back to C:\ProgramData\Debloat\ if the env var is unavailable.
     std::wstring GetDebloatDataDir();

@@ -4,6 +4,8 @@
 #include <cctype>
 #include <fstream>
 #include <shellapi.h>
+#include <sddl.h>
+#include <aclapi.h>
 
 namespace Utils {
 
@@ -304,6 +306,71 @@ std::string GetVersion() {
     return DEBLOAT_VERSION;
 }
 
+bool CreateSecureDirectory(const std::wstring& path) {
+    // SDDL: D: = DACL, P = Protected (do NOT inherit from parent). This is the
+    // key part that prevents %ProgramData%'s loose permissions (which grant
+    // "Users" create/modify on subdirectories) from applying to our backup
+    // folder. Only Built-in Administrators (BA) and SYSTEM (SY) get Full
+    // Access (FA). A non-admin user therefore cannot tamper with the backup
+    // files (service_backup.txt, reg_backup.txt, perf_backup.txt) that this
+    // elevated tool reads back during Revert() — closing a privilege
+    // escalation vector where a standard user could inject a crafted backup
+    // file causing the next elevated run to apply attacker-controlled config.
+    LPCWSTR sddl = L"D:P(A;;FA;;BA)(A;;FA;;SY)";
+    PSECURITY_DESCRIPTOR pSD = NULL;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, SDDL_REVISION_1, &pSD, NULL)) {
+        PrintError("CreateSecureDirectory: ConvertStringSecurityDescriptorToSecurityDescriptorW failed (GLE=" +
+            std::to_string(GetLastError()) + ")");
+        return false;
+    }
+
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.lpSecurityDescriptor = pSD;
+    sa.bInheritHandle = FALSE;
+
+    bool ok = false;
+    if (CreateDirectoryW(path.c_str(), &sa)) {
+        ok = true;
+    } else {
+        DWORD err = GetLastError();
+        if (err == ERROR_ALREADY_EXISTS) {
+            // The directory already exists (possibly created by a prior,
+            // non-hardened run, or by a different caller). Apply the
+            // restrictive DACL to it now so existing loose permissions are
+            // replaced. PROTECTED_DACL_SECURITY_INFORMATION makes the new DACL
+            // protected (no inherit) — matching the "P" flag above.
+            BOOL daclPresent = FALSE;
+            PACL dacl = NULL;
+            BOOL daclDefaulted = FALSE;
+            if (GetSecurityDescriptorDacl(pSD, &daclPresent, &dacl, &daclDefaulted) &&
+                daclPresent && dacl != NULL) {
+                DWORD si = SetNamedSecurityInfoW(
+                    const_cast<LPWSTR>(path.c_str()),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                    NULL, NULL, dacl, NULL);
+                if (si == ERROR_SUCCESS) {
+                    ok = true;
+                } else {
+                    PrintError("CreateSecureDirectory: SetNamedSecurityInfoW failed (GLE=" +
+                        std::to_string(si) + ")");
+                }
+            } else {
+                PrintError("CreateSecureDirectory: GetSecurityDescriptorDacl failed (GLE=" +
+                    std::to_string(GetLastError()) + ")");
+            }
+        } else {
+            PrintError("CreateSecureDirectory: CreateDirectoryW failed (GLE=" +
+                std::to_string(err) + ")");
+        }
+    }
+
+    LocalFree(pSD);
+    return ok;
+}
+
 std::wstring GetDebloatDataDir() {
     wchar_t buf[MAX_PATH];
     DWORD len = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
@@ -312,7 +379,7 @@ std::wstring GetDebloatDataDir() {
         dir = L"C:\\ProgramData\\Debloat\\";   // safe fallback
     else
         dir = std::wstring(buf) + L"\\Debloat\\";
-    CreateDirectoryW(dir.c_str(), NULL);
+    CreateSecureDirectory(dir);
     return dir;
 }
 
