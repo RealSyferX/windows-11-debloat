@@ -137,6 +137,24 @@ All actions are logged with timestamps for audit and debugging purposes. If you 
 - Registry tweaks via `RegCreateKeyExW` / `RegSetValueExW`, with per-value backup at `%ProgramData%\Debloat\reg_backup.txt` for revert
 - Performance via `powercfg`, `DISM /StartComponentCleanup /ResetBase`, with backup at `%ProgramData%\Debloat\perf_backup.txt` for reversible tweaks (hibernation, fast startup, power plan)
 
+## Contributing
+
+Contributions are welcome! Whether it's adding a new bloatware app to the data
+tables, fixing a bug, or improving revert logic, please read
+**[CONTRIBUTING.md](CONTRIBUTING.md)** first — it covers the build process,
+code conventions (`/W4 /permissive- /WX` zero-warning policy), the
+data-table update workflow (source `.cpp`, test count assertion, and README
+count must all stay in sync), revert/backup requirements, and the PR checklist.
+
+## Security
+
+This tool runs elevated and modifies system services, the registry, the hosts
+file, and installed applications, so security matters. If you find a
+vulnerability in the tool itself (e.g., privilege escalation via backup-file
+tampering, PowerShell injection, or temp-file TOCTOU), **do not open a public
+issue** — see **[SECURITY.md](SECURITY.md)** for the private responsible
+disclosure process, scope, response times, and safe-harbor statement.
+
 ## License
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
