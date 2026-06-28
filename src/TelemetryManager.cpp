@@ -421,7 +421,12 @@ void TelemetryManager::Revert() {
         // before handing the value to RegCreateKeyExW.
         uintptr_t rootKeyNum = 0;
         try {
-            rootKeyNum = static_cast<uintptr_t>(std::stoull(fields[0]));
+            size_t idx = 0;
+            rootKeyNum = static_cast<uintptr_t>(std::stoull(fields[0], &idx));
+            if (idx != fields[0].size()) {
+                Utils::PrintWarning("Skipping record with malformed root key field: " + fields[0]);
+                continue;
+            }
         } catch (...) { continue; }
         HKEY rootKey = NULL;
         if (!TelemetryManager::RootKeyFromNum(rootKeyNum, rootKey)) {
@@ -435,9 +440,22 @@ void TelemetryManager::Revert() {
         int existed = 0;
         DWORD type = 0, dataLen = 0;
         try {
-            existed = std::stoi(fields[3]);
-            type    = static_cast<DWORD>(std::stoul(fields[4]));
-            dataLen = static_cast<DWORD>(std::stoul(fields[5]));
+            size_t idx = 0;
+            existed = std::stoi(fields[3], &idx);
+            if (idx != fields[3].size()) {
+                Utils::PrintWarning("Skipping record with malformed 'existed' field: " + fields[3]);
+                continue;
+            }
+            type    = static_cast<DWORD>(std::stoul(fields[4], &idx));
+            if (idx != fields[4].size()) {
+                Utils::PrintWarning("Skipping record with malformed 'type' field: " + fields[4]);
+                continue;
+            }
+            dataLen = static_cast<DWORD>(std::stoul(fields[5], &idx));
+            if (idx != fields[5].size()) {
+                Utils::PrintWarning("Skipping record with malformed 'dataLen' field: " + fields[5]);
+                continue;
+            }
         } catch (...) { continue; }
 
         std::vector<BYTE> data = HexDecode(fields[6]);

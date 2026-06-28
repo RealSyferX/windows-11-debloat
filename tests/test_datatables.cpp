@@ -596,6 +596,24 @@ static void TestPerfBackupParse() {
         CHECK(p.hiberbootEnabled == "missing");
     }
 
+    // Trailing garbage in hiberbootEnabled value: "1abc" must not be silently
+    // parsed as 1. ParseBackup stores the raw string; Revert() validates it
+    // with std::stoul + idx check and skips the write on trailing garbage.
+    // Verify the raw value is preserved and that the stoul+idx pattern
+    // (mirroring Revert) rejects it.
+    {
+        std::string content = PerformanceManager::FormatBackupLine("hiberbootEnabled", "1abc");
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hiberbootEnabled == "1abc");
+        bool wouldAccept = false;
+        try {
+            size_t idx = 0;
+            (void)std::stoul(p.hiberbootEnabled, &idx);
+            wouldAccept = (idx == p.hiberbootEnabled.size());
+        } catch (...) { wouldAccept = false; }
+        CHECK(!wouldAccept);
+    }
+
     // Empty content -> all fields empty.
     {
         auto p = PerformanceManager::ParseBackup("");
@@ -705,6 +723,22 @@ static void TestServiceBackupParse() {
     // Non-numeric start type -> invalid (std::stoul throws).
     {
         auto p = ServiceManager::ParseServiceLine("X|abc");
+        CHECK(!p.valid);
+    }
+
+    // Trailing garbage after a valid number -> invalid. Without the idx
+    // check, std::stoul("2abc") would silently parse as 2 and discard the
+    // "abc". The parser must reject the entire line as malformed.
+    {
+        auto p = ServiceManager::ParseServiceLine("DiagTrack|2abc");
+        CHECK(!p.valid);
+    }
+
+    // Trailing space after a valid number -> invalid. std::stoul("2 ")
+    // parses 2 but leaves idx pointing at the space, so the idx != size()
+    // check rejects it.
+    {
+        auto p = ServiceManager::ParseServiceLine("DiagTrack|2 ");
         CHECK(!p.valid);
     }
 

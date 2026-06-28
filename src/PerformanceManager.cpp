@@ -318,17 +318,31 @@ void PerformanceManager::Revert() {
                 ++failed;
             }
         } else {
-            DWORD val = 1;  // default to enabled if parse fails
-            try { val = static_cast<DWORD>(std::stoul(parsed.hiberbootEnabled)); }
-            catch (...) { val = 1; }
-            r = RegSetValueExW(hKey, L"HiberbootEnabled", 0, REG_DWORD,
-                reinterpret_cast<const BYTE*>(&val), sizeof(val));
-            if (r == ERROR_SUCCESS) {
-                std::cout << "  [OK] Fast startup restored (HiberbootEnabled=" << val << ")\n";
-                ++restored;
-            } else {
-                std::cout << "  [!!] Fast startup restore failed (err " << r << ")\n";
+            // Parse the original HiberbootEnabled value. The idx check rejects
+            // trailing garbage (e.g. "1abc" would silently parse as 1 without
+            // it) — the entire string must be consumed. On parse failure we
+            // skip the write entirely rather than guessing a default value.
+            DWORD val = 0;
+            bool parsedOk = false;
+            try {
+                size_t idx = 0;
+                val = static_cast<DWORD>(std::stoul(parsed.hiberbootEnabled, &idx));
+                parsedOk = (idx == parsed.hiberbootEnabled.size());
+            } catch (...) { parsedOk = false; }
+            if (!parsedOk) {
+                std::cout << "  [!!] Fast startup -- cannot parse value \""
+                          << parsed.hiberbootEnabled << "\" -- skipping\n";
                 ++failed;
+            } else {
+                r = RegSetValueExW(hKey, L"HiberbootEnabled", 0, REG_DWORD,
+                    reinterpret_cast<const BYTE*>(&val), sizeof(val));
+                if (r == ERROR_SUCCESS) {
+                    std::cout << "  [OK] Fast startup restored (HiberbootEnabled=" << val << ")\n";
+                    ++restored;
+                } else {
+                    std::cout << "  [!!] Fast startup restore failed (err " << r << ")\n";
+                    ++failed;
+                }
             }
         }
         if (hKey) RegCloseKey(hKey);

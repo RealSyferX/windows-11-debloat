@@ -223,10 +223,14 @@ ParsedServiceBackup ServiceManager::ParseServiceLine(const std::string& line) {
 
     // Parse the start type. std::stoul throws std::invalid_argument on empty
     // or non-numeric input, and std::out_of_range on overflow; both are
-    // rejected as malformed lines.
+    // rejected as malformed lines. The idx output parameter is checked to
+    // reject trailing garbage (e.g. "2abc" would silently parse as 2 without
+    // this check) — the entire string must be consumed.
     DWORD startType = 0;
     try {
-        startType = static_cast<DWORD>(std::stoul(typeStr));
+        size_t idx = 0;
+        startType = static_cast<DWORD>(std::stoul(typeStr, &idx));
+        if (idx != typeStr.size()) return result;
     } catch (...) {
         return result;
     }
