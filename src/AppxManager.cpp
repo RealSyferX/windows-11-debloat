@@ -63,7 +63,7 @@ void AppxManager::RemoveAll() {
     const auto& apps = GetBloatwareList();
     std::wstring script = L"$ErrorActionPreference = 'SilentlyContinue'\n$apps = @(\n";
     for (size_t i = 0; i < apps.size(); i++) {
-        script += L"    '" + apps[i].namePattern + L"'";
+        script += L"    '" + Utils::EscapePsSingleQuote(apps[i].namePattern) + L"'";
         if (i + 1 < apps.size()) script += L",";
         script += L"\n";
     }

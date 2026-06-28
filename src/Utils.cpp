@@ -162,4 +162,14 @@ bool CreateRestorePoint() {
     return success;
 }
 
+    std::wstring EscapePsSingleQuote(const std::wstring& s) {
+        std::wstring out;
+        out.reserve(s.size() + 4);
+        for (wchar_t c : s) {
+            if (c == L'\'') out += L"''";
+            else            out += c;
+        }
+        return out;
+    }
+
 } // namespace Utils

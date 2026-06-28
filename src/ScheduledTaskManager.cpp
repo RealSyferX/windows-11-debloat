@@ -58,8 +58,9 @@ void ScheduledTaskManager::DisableAll() {
 
     std::wstring script = L"$ErrorActionPreference = 'SilentlyContinue'\n$tasks = @(\n";
     for (size_t i = 0; i < tasks.size(); i++) {
-        script += L"    @{Name='" + tasks[i].name + L"';Path='" + tasks[i].path + L"';Desc='"
-            + Utils::StringToWide(tasks[i].description) + L"'}";
+        script += L"    @{Name='" + Utils::EscapePsSingleQuote(tasks[i].name) + L"';Path='"
+            + Utils::EscapePsSingleQuote(tasks[i].path) + L"';Desc='"
+            + Utils::EscapePsSingleQuote(Utils::StringToWide(tasks[i].description)) + L"'}";
         if (i + 1 < tasks.size()) script += L",";
         script += L"\n";
     }
@@ -84,8 +85,9 @@ void ScheduledTaskManager::EnableAll() {
 
     std::wstring script = L"$ErrorActionPreference = 'SilentlyContinue'\n$tasks = @(\n";
     for (size_t i = 0; i < tasks.size(); i++) {
-        script += L"    @{Name='" + tasks[i].name + L"';Path='" + tasks[i].path + L"';Desc='"
-            + Utils::StringToWide(tasks[i].description) + L"'}";
+        script += L"    @{Name='" + Utils::EscapePsSingleQuote(tasks[i].name) + L"';Path='"
+            + Utils::EscapePsSingleQuote(tasks[i].path) + L"';Desc='"
+            + Utils::EscapePsSingleQuote(Utils::StringToWide(tasks[i].description)) + L"'}";
         if (i + 1 < tasks.size()) script += L",";
         script += L"\n";
     }

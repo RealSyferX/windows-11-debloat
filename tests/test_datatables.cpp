@@ -20,6 +20,7 @@
 #include "ScheduledTaskManager.h"
 #include "HostsManager.h"
 #include "TelemetryManager.h"
+#include "Utils.h"
 
 #include <iostream>
 #include <set>
@@ -144,6 +145,23 @@ static void TestRegistryTweaks() {
     }
 }
 
+// -- PowerShell single-quote escaping --------------------------------------
+
+static void TestEscapePsSingleQuote() {
+    // Apostrophe in the middle must be doubled.
+    CHECK(Utils::EscapePsSingleQuote(L"foo'bar") == L"foo''bar");
+    // Apostrophe-free string is unchanged.
+    CHECK(Utils::EscapePsSingleQuote(L"noquotes") == L"noquotes");
+    // Leading single quote.
+    CHECK(Utils::EscapePsSingleQuote(L"'leading") == L"''leading");
+    // Trailing single quote.
+    CHECK(Utils::EscapePsSingleQuote(L"trailing'") == L"trailing''");
+    // Two quotes -> each doubled -> four single quotes in output.
+    CHECK(Utils::EscapePsSingleQuote(L"''") == L"''''");
+    // Empty string is unchanged.
+    CHECK(Utils::EscapePsSingleQuote(L"") == L"");
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -152,6 +170,7 @@ int main() {
     TestScheduledTasks();
     TestBlockedDomains();
     TestRegistryTweaks();
+    TestEscapePsSingleQuote();
 
     if (g_failures == 0) {
         std::cout << "All tests passed.\n";

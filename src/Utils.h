@@ -28,4 +28,9 @@ namespace Utils {
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
     bool CreateRestorePoint();
+
+    // Doubles every single quote so the value is safe to embed inside a
+    // PowerShell single-quoted string literal. Call this on ANY value
+    // interpolated into a PS single-quoted string, even "trusted" table data.
+    std::wstring EscapePsSingleQuote(const std::wstring& s);
 }
