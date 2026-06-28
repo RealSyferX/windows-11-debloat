@@ -12,24 +12,6 @@
 // The other three tweaks (temp cleanup, WU cache, DISM /ResetBase) are
 // irreversible and intentionally not backed up.
 
-// Returns the full path to the performance backup file at
-// %ProgramData%\Debloat\perf_backup.txt. Creates the directory if it does not
-// exist (idempotent — ERROR_ALREADY_EXISTS is ignored by CreateDirectoryW).
-// Falls back to C:\ProgramData\Debloat\ if %ProgramData% is unset/unavailable.
-// Mirrors the GetBackupFilePath() pattern in ServiceManager and
-// TelemetryManager so all backups live side-by-side in the same directory.
-static std::wstring GetBackupFilePath() {
-    wchar_t buf[MAX_PATH];
-    DWORD len = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
-    std::wstring dir;
-    if (len == 0 || len >= MAX_PATH)
-        dir = L"C:\\ProgramData\\Debloat\\";   // safe fallback
-    else
-        dir = std::wstring(buf) + L"\\Debloat\\";
-    CreateDirectoryW(dir.c_str(), NULL);
-    return dir + L"perf_backup.txt";
-}
-
 // Check whether hibernation is currently enabled by looking for hiberfil.sys
 // on the system drive. powercfg /h off deletes this file; powercfg /h on
 // recreates it. GetFileAttributesW returns INVALID_FILE_ATTRIBUTES if the file
@@ -115,7 +97,7 @@ void PerformanceManager::ApplyAll() {
     // can restore them exactly. The other three tweaks (temp cleanup, WU
     // cache, DISM /ResetBase) are irreversible and not backed up.
     {
-        std::wstring backupPath = GetBackupFilePath();
+        std::wstring backupPath = Utils::GetDebloatDataDir() + L"perf_backup.txt";
         std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
         if (backup.is_open()) {
             backup << "hibernation|" << (IsHibernationOn() ? "on" : "off") << "\n";
@@ -226,15 +208,15 @@ void PerformanceManager::ApplyAll() {
         L"Write-Host 'All performance tweaks applied.'\n";
 
     auto r = Utils::RunPowerShell(script, 900000);  // 15 minutes for DISM
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Performance tweaks & disk cleanup complete.");
-    else      Utils::PrintError("PowerShell failed to execute -- changes may not have applied.");
+    Utils::PrintPsResult(r,
+        "Performance tweaks & disk cleanup complete.",
+        "PowerShell failed to execute -- changes may not have applied.");
 }
 
 void PerformanceManager::Revert() {
     Utils::PrintHeader("Reverting performance tweaks from backup...");
 
-    std::wstring backupPath = GetBackupFilePath();
+    std::wstring backupPath = Utils::GetDebloatDataDir() + L"perf_backup.txt";
     std::ifstream fin(backupPath);
     if (!fin.is_open()) {
         std::cout << "  [--] No performance backup found -- nothing to revert.\n";

@@ -196,24 +196,6 @@ void TelemetryManager::List() {
 // is subjective and a blanket delete would discard the user's prior
 // customization.
 
-// Returns the full path to the registry backup file at
-// %ProgramData%\Debloat\reg_backup.txt. Creates the directory if it does not
-// exist (idempotent — ERROR_ALREADY_EXISTS is ignored by CreateDirectoryW).
-// Falls back to C:\ProgramData\Debloat\ if %ProgramData% is unset/unavailable.
-// Mirrors the ServiceManager::GetBackupFilePath() pattern so both backups live
-// side-by-side in the same directory.
-static std::wstring GetBackupFilePath() {
-    wchar_t buf[MAX_PATH];
-    DWORD len = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
-    std::wstring dir;
-    if (len == 0 || len >= MAX_PATH)
-        dir = L"C:\\ProgramData\\Debloat\\";   // safe fallback
-    else
-        dir = std::wstring(buf) + L"\\Debloat\\";
-    CreateDirectoryW(dir.c_str(), NULL);
-    return dir + L"reg_backup.txt";
-}
-
 // Escape backslash and pipe so the field is safe inside the pipe-delimited
 // record format. Registry paths/value-names do not normally contain pipes, but
 // escaping makes the format unambiguous regardless.
@@ -287,7 +269,7 @@ void TelemetryManager::ApplyAll() {
 
     // Open the backup file once (truncate) so each ApplyAll run produces a
     // fresh snapshot of the original values. Revert() reads this back.
-    std::wstring backupPath = GetBackupFilePath();
+    std::wstring backupPath = Utils::GetDebloatDataDir() + L"reg_backup.txt";
     std::ofstream backup(backupPath, std::ios::out | std::ios::trunc);
     if (!backup.is_open())
         Utils::PrintWarning("Could not open registry backup file — original values will not be saved.");
@@ -370,7 +352,7 @@ void TelemetryManager::ApplyAll() {
 void TelemetryManager::Revert() {
     Utils::PrintHeader("Reverting registry tweaks from backup...");
 
-    std::wstring backupPath = GetBackupFilePath();
+    std::wstring backupPath = Utils::GetDebloatDataDir() + L"reg_backup.txt";
     std::ifstream fin(backupPath);
     if (!fin.is_open()) {
         std::cout << "  [--] No registry backup found — nothing to revert.\n";

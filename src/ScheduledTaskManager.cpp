@@ -74,9 +74,9 @@ void ScheduledTaskManager::DisableAll() {
         L"Write-Host \"`nScheduled task cleanup complete.\"\n";
 
     auto r = Utils::RunPowerShell(script);
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Scheduled telemetry tasks disabled.");
-    else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");
+    Utils::PrintPsResult(r,
+        "Scheduled telemetry tasks disabled.",
+        "PowerShell failed to execute — changes may not have applied.");
 }
 
 void ScheduledTaskManager::EnableAll() {
@@ -101,7 +101,7 @@ void ScheduledTaskManager::EnableAll() {
         L"Write-Host \"`nScheduled task restore complete.\"\n";
 
     auto r = Utils::RunPowerShell(script);
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Scheduled telemetry tasks re-enabled.");
-    else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");
+    Utils::PrintPsResult(r,
+        "Scheduled telemetry tasks re-enabled.",
+        "PowerShell failed to execute — changes may not have applied.");
 }

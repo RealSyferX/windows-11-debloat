@@ -91,9 +91,9 @@ void AppxManager::RemoveAll() {
         L"Write-Host \"`nApp removal complete.\"\n";
 
     auto r = Utils::RunPowerShell(script);
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Bloatware app removal finished.");
-    else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");
+    Utils::PrintPsResult(r,
+        "Bloatware app removal finished.",
+        "PowerShell failed to execute — changes may not have applied.");
 }
 
 void AppxManager::RemoveOneDrive() {
@@ -124,7 +124,7 @@ void AppxManager::RemoveOneDrive() {
         L"if ($ok) { Write-Host '  [OK] OneDrive removed' }\n"
         L"else     { Write-Host '  [--] OneDrive not found' }\n";
     auto r = Utils::RunPowerShell(script);
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("OneDrive removal finished.");
-    else      Utils::PrintError("PowerShell failed to execute — changes may not have applied.");
+    Utils::PrintPsResult(r,
+        "OneDrive removal finished.",
+        "PowerShell failed to execute — changes may not have applied.");
 }

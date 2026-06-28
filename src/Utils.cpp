@@ -235,6 +235,14 @@ void PrintError(const std::string& msg)   { SetColor(FOREGROUND_RED | FOREGROUND
 void PrintWarning(const std::string& msg) { SetColor(FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY); std::cout << msg << "\n"; SetColor(CLR_DEFAULT); }
 void PrintHeader(const std::string& msg)  { SetColor(FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_INTENSITY); std::cout << "\n" << msg << "\n" << std::string(msg.size(), '-') << "\n"; SetColor(CLR_DEFAULT); }
 
+void PrintPsResult(const PowerShellResult& r,
+                   const std::string& successMsg,
+                   const std::string& errorMsg) {
+    if (!r.out.empty()) std::cout << r.out;
+    if (r.ok) PrintSuccess(successMsg);
+    else      PrintError(errorMsg);
+}
+
 bool AskYesNo(const std::string& prompt) {
     std::cout << prompt << " (Y/n): ";
     std::string in;
@@ -283,6 +291,18 @@ bool CreateRestorePoint() {
     else
         PrintError(out.empty() ? "[!!] Failed: unable to create restore point." : out);
     return success;
+}
+
+std::wstring GetDebloatDataDir() {
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
+    std::wstring dir;
+    if (len == 0 || len >= MAX_PATH)
+        dir = L"C:\\ProgramData\\Debloat\\";   // safe fallback
+    else
+        dir = std::wstring(buf) + L"\\Debloat\\";
+    CreateDirectoryW(dir.c_str(), NULL);
+    return dir;
 }
 
     std::wstring EscapePsSingleQuote(const std::wstring& s) {

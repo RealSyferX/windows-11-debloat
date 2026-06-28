@@ -106,9 +106,9 @@ void HostsManager::Apply() {
               << " telemetry domains in hosts file.\n";
 
     auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Hosts file updated. DNS cache flushed.");
-    else      Utils::PrintError("Hosts file updated, but PowerShell failed to flush DNS cache.");
+    Utils::PrintPsResult(r,
+        "Hosts file updated. DNS cache flushed.",
+        "Hosts file updated, but PowerShell failed to flush DNS cache.");
 }
 
 void HostsManager::Revert() {
@@ -145,9 +145,9 @@ void HostsManager::Revert() {
     std::cout << "  [OK] Hosts block reverted.\n";
 
     auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
-    if (!r.out.empty()) std::cout << r.out;
-    if (r.ok) Utils::PrintSuccess("Hosts block removed. DNS cache flushed.");
-    else      Utils::PrintError("Hosts block removed, but PowerShell failed to flush DNS cache.");
+    Utils::PrintPsResult(r,
+        "Hosts block removed. DNS cache flushed.",
+        "Hosts block removed, but PowerShell failed to flush DNS cache.");
 }
 
 std::optional<std::string> HostsManager::RemoveBlock(std::string content) {

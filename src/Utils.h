@@ -33,10 +33,18 @@ namespace Utils {
     void PrintError(const std::string& msg);
     void PrintWarning(const std::string& msg);
     void PrintHeader(const std::string& msg);
+    // Prints the PowerShell result: captured output, then success or error message.
+    void PrintPsResult(const PowerShellResult& r,
+                       const std::string& successMsg,
+                       const std::string& errorMsg);
     bool AskYesNo(const std::string& prompt);
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
     bool CreateRestorePoint();
+
+    // Returns %ProgramData%\Debloat\ (creating it if missing).
+    // Falls back to C:\ProgramData\Debloat\ if the env var is unavailable.
+    std::wstring GetDebloatDataDir();
 
     // Doubles every single quote so the value is safe to embed inside a
     // PowerShell single-quoted string literal. Call this on ANY value
