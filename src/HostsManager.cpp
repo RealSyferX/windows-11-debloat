@@ -91,7 +91,7 @@ void HostsManager::Apply() {
     block << "# Remove these lines to restore\n";
     for (const auto& d : GetBlockedDomains())
         block << "0.0.0.0 " << Utils::WideToString(d) << "\n";
-    block << "# ===== End RealSyferX Debloat =====\n";
+    block << END_MARKER << "\n";
 
     // Build the full new content in memory, then write it atomically: the
     // write goes to a .tmp file in the same directory and is renamed over the
