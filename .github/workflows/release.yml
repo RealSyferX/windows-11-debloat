@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -B build -G "Visual Studio 17 2022" -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run tests
+        run: .\build\Release\debloat_tests.exe
+
+      - name: Compute SHA-256
+        shell: pwsh
+        run: |
+          $hash = Get-FileHash -Path build\Release\Debloat.exe -Algorithm SHA256
+          "$($hash.Hash)  Debloat.exe" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Host "SHA-256: $($hash.Hash)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/Release/Debloat.exe
+            SHA256SUMS.txt
+          generate_release_notes: true
