@@ -104,6 +104,8 @@ void HostsManager::Apply() {
 
     std::cout << "  [OK] Blocked " << GetBlockedDomains().size()
               << " telemetry domains in hosts file.\n";
+    Utils::LogAction("HOSTS", "Blocked " +
+        std::to_string(GetBlockedDomains().size()) + " telemetry domains");
 
     auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
     Utils::PrintPsResult(r,
@@ -143,6 +145,7 @@ void HostsManager::Revert() {
     fout.close();
 
     std::cout << "  [OK] Hosts block reverted.\n";
+    Utils::LogAction("HOSTS", "Reverted telemetry block");
 
     auto r = Utils::RunPowerShell(L"ipconfig /flushdns | Out-Null; Write-Host '  [OK] DNS cache flushed'");
     Utils::PrintPsResult(r,

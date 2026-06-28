@@ -61,6 +61,7 @@ void AppxManager::RemoveAll() {
     Utils::PrintHeader("Removing bloatware apps...");
 
     const auto& apps = GetBloatwareList();
+    Utils::LogAction("APPX", "Removing " + std::to_string(apps.size()) + " bloatware apps");
     std::wstring script = L"$ErrorActionPreference = 'SilentlyContinue'\n$apps = @(\n";
     for (size_t i = 0; i < apps.size(); i++) {
         script += L"    '" + Utils::EscapePsSingleQuote(apps[i].namePattern) + L"'";
@@ -94,10 +95,12 @@ void AppxManager::RemoveAll() {
     Utils::PrintPsResult(r,
         "Bloatware app removal finished.",
         "PowerShell failed to execute — changes may not have applied.");
+    Utils::LogAction("APPX", std::string("RemoveAll complete ok=") + (r.ok ? "1" : "0"));
 }
 
 void AppxManager::RemoveOneDrive() {
     Utils::PrintHeader("Removing OneDrive...");
+    Utils::LogAction("APPX", "Removing OneDrive");
     std::wstring script =
         L"$ErrorActionPreference = 'SilentlyContinue'\n"
         L"Write-Host \"  Stopping OneDrive process...\"\n"

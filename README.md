@@ -82,6 +82,16 @@ This tool is surgical. It does **not** touch:
 - Notepad, Paint, Calculator, Snipping Tool, Photos
 - Print Spooler, codecs, Windows Terminal
 
+## Troubleshooting
+
+Every action the tool takes — app removals, service changes, registry tweaks, hosts-file edits, restore-point creation, and performance tweaks — is recorded in a persistent, timestamped audit log at:
+
+```
+%ProgramData%\Debloat\debloat.log
+```
+
+All actions are logged with timestamps for audit and debugging purposes. If you experience a problem days later, open this file to see exactly what the tool changed and when. The revert backups (service start types, registry values, performance settings) are stored alongside it in the same `%ProgramData%\Debloat\` directory.
+
 ## Before vs After
 
 | Without Debloat | With Debloat |

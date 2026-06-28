@@ -61,6 +61,29 @@ static void PrintMenu() {
         "   0) Exit\n";
 }
 
+// Maps a menu choice string to a short human-readable description, used for
+// the audit log so each selection is recorded before it is executed.
+static const char* MenuDescription(const std::string& choice) {
+    if (choice == "1")  return "Remove bloatware apps";
+    if (choice == "2")  return "Remove OneDrive";
+    if (choice == "3")  return "Disable telemetry services";
+    if (choice == "4")  return "Delete telemetry services (aggressive)";
+    if (choice == "5")  return "Apply telemetry registry tweaks";
+    if (choice == "6")  return "Disable scheduled telemetry tasks";
+    if (choice == "7")  return "Block telemetry domains (hosts)";
+    if (choice == "8")  return "Performance tweaks";
+    if (choice == "9")  return "Create System Restore Point";
+    if (choice == "10") return "List all targets (preview)";
+    if (choice == "11") return "Revert: unblock telemetry domains";
+    if (choice == "12") return "Revert: re-enable scheduled tasks";
+    if (choice == "13") return "RUN ALL";
+    if (choice == "14") return "Revert: re-enable telemetry services";
+    if (choice == "15") return "Revert: undo registry tweaks";
+    if (choice == "16") return "Revert: undo performance tweaks";
+    if (choice == "0")  return "Exit";
+    return "Invalid option";
+}
+
 int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleTitleW(L"Windows 11 Debloat");
@@ -79,6 +102,7 @@ int main() {
         return 1;
     }
     Utils::PrintSuccess("Running with administrator privileges.");
+    Utils::LogAction("SESSION_START", "Debloat tool launched");
 
     while (true) {
         PrintMenu();
@@ -90,6 +114,9 @@ int main() {
             std::cout << "\n  EOF detected. Exiting.\n";
             break;
         }
+
+        // Log the menu selection for the audit trail before executing it.
+        Utils::LogAction("MENU", std::string("option ") + choice + " - " + MenuDescription(choice));
 
         if (choice == "0") {
             std::cout << "\n  Goodbye.\n";
@@ -139,6 +166,7 @@ int main() {
             Utils::PrintWarning("This will remove apps, OneDrive, disable services, apply registry tweaks,");
             Utils::PrintWarning("disable scheduled tasks, block telemetry domains, and run performance tweaks.");
             if (Utils::AskYesNo("\n  Proceed with FULL debloat?")) {
+                Utils::LogAction("RUN_ALL", "Starting full debloat");
                 Utils::PrintInfo("Creating a System Restore Point before proceeding...");
                 Utils::CreateRestorePoint();
                 if (!Utils::AskYesNo("  Restore point attempted. Continue with full debloat?")) {
@@ -151,6 +179,7 @@ int main() {
                     HostsManager::Apply();
                     TelemetryManager::ApplyAll();
                     PerformanceManager::ApplyAll();
+                    Utils::LogAction("RUN_ALL", "Full debloat complete");
                     Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
                 }
             }
@@ -167,5 +196,6 @@ int main() {
             Utils::PrintError("Invalid option.");
         }
     }
+    Utils::LogAction("SESSION_END", "Debloat tool exited");
     return 0;
 }

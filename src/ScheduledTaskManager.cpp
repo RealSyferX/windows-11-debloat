@@ -83,6 +83,8 @@ void ScheduledTaskManager::SetTaskState(bool enable) {
         enable ? "Scheduled telemetry tasks re-enabled."
                : "Scheduled telemetry tasks disabled.",
         "PowerShell failed to execute — changes may not have applied.");
+    Utils::LogAction("TASK", std::string(enable ? "Enabled " : "Disabled ") +
+        std::to_string(tasks.size()) + " scheduled tasks");
 }
 
 void ScheduledTaskManager::DisableAll() {

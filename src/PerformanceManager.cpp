@@ -91,6 +91,7 @@ void PerformanceManager::List() {
 
 void PerformanceManager::ApplyAll() {
     Utils::PrintHeader("Applying performance tweaks & disk cleanup...");
+    Utils::LogAction("PERFORMANCE", "Applied performance tweaks");
 
     // --- Backup reversible settings before modifying them -------------------
     // Record the original state of the three reversible tweaks so Revert()
@@ -323,6 +324,7 @@ void PerformanceManager::Revert() {
               << "    - WinSxS /ResetBase (installed updates made permanent)\n";
 
     std::cout << "\n  Summary: " << restored << " restored, " << failed << " failed.\n";
+    Utils::LogAction("PERFORMANCE", "Reverted performance tweaks");
     if (failed == 0 && restored > 0)
         Utils::PrintSuccess("Performance tweaks reverted from backup.");
     else if (restored > 0)

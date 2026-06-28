@@ -46,6 +46,11 @@ namespace Utils {
     // Falls back to C:\ProgramData\Debloat\ if the env var is unavailable.
     std::wstring GetDebloatDataDir();
 
+    // Appends a timestamped entry to the persistent log file
+    // (%ProgramData%\Debloat\debloat.log). Creates the directory if needed.
+    // Silent on failure — never crashes the tool because logging failed.
+    void LogAction(const std::string& action, const std::string& detail = "");
+
     // Doubles every single quote so the value is safe to embed inside a
     // PowerShell single-quoted string literal. Call this on ANY value
     // interpolated into a PS single-quoted string, even "trusted" table data.

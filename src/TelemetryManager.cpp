@@ -347,6 +347,8 @@ void TelemetryManager::ApplyAll() {
     }
     Utils::PrintSuccess("Applied " + std::to_string(ok) + "/" +
         std::to_string(t.size()) + " registry tweaks.");
+    Utils::LogAction("REGISTRY", "Applied " + std::to_string(ok) + "/" +
+        std::to_string(t.size()) + " registry tweaks");
 }
 
 void TelemetryManager::Revert() {
@@ -433,6 +435,8 @@ void TelemetryManager::Revert() {
 
     std::cout << "\n  Summary: " << restored << " restored, " << deleted
               << " deleted, " << failed << " failed.\n";
+    Utils::LogAction("REGISTRY", "Reverted " + std::to_string(restored + deleted) +
+        " registry tweaks from backup");
     if (failed == 0 && (restored + deleted) > 0)
         Utils::PrintSuccess("Registry tweaks reverted from backup.");
     else if (restored + deleted > 0)

@@ -155,6 +155,8 @@ void ServiceManager::DisableAll() {
         backup.close();
     }
     Utils::PrintSuccess("Telemetry services disabled.");
+    Utils::LogAction("SERVICE", "Disabled " +
+        std::to_string(GetTelemetryServices().size()) + " telemetry services");
 }
 
 void ServiceManager::DeleteAll() {
@@ -240,6 +242,7 @@ void ServiceManager::EnableAll() {
 
     std::cout << "\n  Summary: " << restored << " restored, " << notFound
               << " not found, " << failed << " failed.\n";
+    Utils::LogAction("SERVICE", "Reverted " + std::to_string(restored) + " services from backup");
     if (failed == 0 && notFound == 0 && restored > 0)
         Utils::PrintSuccess("Telemetry services re-enabled from backup.");
     else if (restored > 0)

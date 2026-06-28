@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <iostream>
 #include <cctype>
+#include <fstream>
 #include <shellapi.h>
 
 namespace Utils {
@@ -290,6 +291,7 @@ bool CreateRestorePoint() {
         PrintSuccess(out);
     else
         PrintError(out.empty() ? "[!!] Failed: unable to create restore point." : out);
+    LogAction("RESTORE_POINT", "Created ok=" + std::to_string(success ? 1 : 0));
     return success;
 }
 
@@ -303,6 +305,28 @@ std::wstring GetDebloatDataDir() {
         dir = std::wstring(buf) + L"\\Debloat\\";
     CreateDirectoryW(dir.c_str(), NULL);
     return dir;
+}
+
+void LogAction(const std::string& action, const std::string& detail) {
+    // GetDebloatDataDir() already creates the directory if missing.
+    std::wstring logPath = GetDebloatDataDir() + L"debloat.log";
+    // MSVC's std::ofstream accepts a wchar_t* path (non-standard but required
+    // for paths that contain non-ASCII characters from the system locale).
+    std::ofstream log(logPath, std::ios::out | std::ios::app);
+    if (!log.is_open())
+        return;   // silent failure — don't crash the tool over logging
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    char ts[32];
+    std::snprintf(ts, sizeof(ts), "%04d-%02d-%02d %02d:%02d:%02d",
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond);
+
+    log << "[" << ts << "] " << action;
+    if (!detail.empty())
+        log << ": " << detail;
+    log << "\n" << std::flush;   // flush so entries survive a crash mid-operation
 }
 
     std::wstring EscapePsSingleQuote(const std::wstring& s) {
