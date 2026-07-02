@@ -181,15 +181,70 @@ static const char* MenuDescription(const std::string& choice) {
     return "Invalid option";
 }
 
+// Maps a --revert <target> name to its menu option number. The mapping is
+// derived from the menu table in GetMenu(): revert operations are items
+// 11 (hosts), 12 (tasks), 14 (services), 15 (registry), and 16 (perf).
+// Returns -1 for an unrecognized target name.
+static int RevertTargetToNumber(const std::string& target) {
+    if (target == "hosts")    return 11;  // Revert: unblock telemetry domains
+    if (target == "tasks")    return 12;  // Revert: re-enable scheduled tasks
+    if (target == "services") return 14;  // Revert: re-enable telemetry services
+    if (target == "registry") return 15;  // Revert: undo registry tweaks
+    if (target == "perf")     return 16;  // Revert: undo performance tweaks
+    return -1;
+}
+
+// Executes a single menu option non-interactively. Returns 0 on success,
+// 1 on failure (invalid number or exception during execution). The caller
+// is responsible for the elevation and version-guard checks; AskYesNo
+// prompts inside the actions are auto-confirmed when SetAutoYes(true) was
+// called beforehand.
+static int RunNonInteractive(int menuNumber) {
+    const MenuItem* item = nullptr;
+    for (const auto& m : GetMenu()) {
+        if (m.number == menuNumber) {
+            item = &m;
+            break;
+        }
+    }
+    if (!item) {
+        Utils::PrintError("Invalid menu option number: " + std::to_string(menuNumber));
+        return 1;
+    }
+
+    Utils::LogAction("CLI", "option " + std::to_string(menuNumber) + " - " + item->description);
+
+    try {
+        item->action();
+    } catch (const std::exception& e) {
+        Utils::PrintError(std::string("Action failed: ") + e.what());
+        Utils::LogAction("ERROR", std::string("CLI action failed: ") + e.what());
+        return 1;
+    } catch (...) {
+        Utils::PrintError("Action failed: unknown error.");
+        Utils::LogAction("ERROR", "CLI action failed: unknown exception");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     // Parse all command-line flags in a single pass before any other logic.
     // --version and --help exit BEFORE the UAC elevation check so non-admin
     // users can query the binary without being prompted for admin rights.
     // --no-banner skips the animated banner but continues to the menu flow,
     // which still requires elevation.
+    // --apply <N> runs a single menu option non-interactively and exits.
+    // --revert <target> runs a revert operation by name and exits.
+    // --yes/-y auto-confirms all AskYesNo prompts (required for non-interactive
+    // use when stdin is not a TTY).
     bool noBanner = false;
     bool showHelp = false;
     bool showVersion = false;
+    bool autoYes = false;
+    int applyOption = -1;          // -1 = not specified
+    std::string revertTarget;      // empty = not specified
 
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -199,6 +254,35 @@ int main(int argc, char* argv[]) {
             showHelp = true;
         } else if (arg == "--no-banner" || arg == "-q") {
             noBanner = true;
+        } else if (arg == "--yes" || arg == "-y") {
+            autoYes = true;
+        } else if (arg == "--apply" || arg == "-a") {
+            if (i + 1 >= argc) {
+                SetConsoleOutputCP(CP_UTF8);
+                Utils::PrintError("--apply requires a menu option number.");
+                return 1;
+            }
+            std::string numStr(argv[++i]);
+            size_t pos = 0;
+            try {
+                applyOption = std::stoi(numStr, &pos);
+            } catch (...) {
+                SetConsoleOutputCP(CP_UTF8);
+                Utils::PrintError("Invalid menu option number: " + numStr);
+                return 1;
+            }
+            if (pos != numStr.size()) {
+                SetConsoleOutputCP(CP_UTF8);
+                Utils::PrintError("Invalid menu option number: " + numStr);
+                return 1;
+            }
+        } else if (arg == "--revert") {
+            if (i + 1 >= argc) {
+                SetConsoleOutputCP(CP_UTF8);
+                Utils::PrintError("--revert requires a target name (hosts|tasks|services|registry|perf).");
+                return 1;
+            }
+            revertTarget = argv[++i];
         }
     }
 
@@ -212,11 +296,17 @@ int main(int argc, char* argv[]) {
         // even though this runs before the main SetConsoleOutputCP(CP_UTF8) call.
         SetConsoleOutputCP(CP_UTF8);
         std::cout << "Debloat v" << Utils::GetVersion() << " — Windows 11 Debloat Tool\n";
-        std::cout << "Usage: Debloat.exe [--version] [--help] [--no-banner]\n\n";
+        std::cout << "Usage: Debloat.exe [--version] [--help] [--no-banner] [--yes]\n";
+        std::cout << "                   [--apply <N>] [--revert <target>]\n\n";
         std::cout << "Flags:\n";
-        std::cout << "  --version, -V    Print version and exit\n";
-        std::cout << "  --help, -h       Print this help and exit\n";
-        std::cout << "  --no-banner, -q  Skip animated banner (for scripted use)\n\n";
+        std::cout << "  --version, -V       Print version and exit\n";
+        std::cout << "  --help, -h          Print this help and exit\n";
+        std::cout << "  --no-banner, -q     Skip animated banner (for scripted use)\n";
+        std::cout << "  --yes, -y           Auto-confirm all prompts (required for non-interactive use)\n";
+        std::cout << "  --apply <N>         Run menu option N non-interactively and exit\n";
+        std::cout << "                      (requires --yes if stdin is not a TTY)\n";
+        std::cout << "  --revert <target>   Run revert by name and exit:\n";
+        std::cout << "                        hosts | tasks | services | registry | perf\n\n";
         std::cout << "Menu options (interactive mode):\n";
         PrintMenu();
         return 0;
@@ -225,12 +315,46 @@ int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleTitleW(L"Windows 11 Debloat");
 
-    if (!noBanner) {
+    // Resolve --revert <target> to a menu option number. --apply takes
+    // precedence if both --apply and --revert were given on the same command
+    // line (the user can always re-run with the other flag).
+    bool nonInteractive = false;
+    if (applyOption >= 0) {
+        nonInteractive = true;
+    } else if (!revertTarget.empty()) {
+        applyOption = RevertTargetToNumber(revertTarget);
+        if (applyOption < 0) {
+            Utils::PrintError("Unknown revert target: " + revertTarget +
+                " (valid: hosts|tasks|services|registry|perf)");
+            return 1;
+        }
+        nonInteractive = true;
+    }
+
+    // Non-interactive safety: refuse --apply/--revert without --yes when
+    // stdin is not a TTY (e.g. piped or redirected input), since destructive
+    // actions cannot be confirmed interactively in that context.
+    if (nonInteractive && !autoYes) {
+        DWORD ft = GetFileType(GetStdHandle(STD_INPUT_HANDLE));
+        if (ft != FILE_TYPE_CHAR) {
+            Utils::PrintError("Non-interactive mode requires --yes to confirm destructive actions.");
+            return 1;
+        }
+    }
+
+    // Banner: skip in non-interactive mode or when --no-banner is set.
+    if (!nonInteractive && !noBanner) {
         PrintBanner();
     }
 
     if (!Utils::IsElevated()) {
         Utils::PrintError("Administrator privileges required.");
+        if (nonInteractive) {
+            // No relaunch prompt in non-interactive mode — the caller (script,
+            // GPO, MDM) is responsible for invoking the tool elevated.
+            Utils::LogAction("ERROR", "CLI mode without elevation");
+            return 1;
+        }
         if (Utils::AskYesNo("  Relaunch as administrator?")) {
             if (Utils::RelaunchAsAdmin())
                 return 0;
@@ -243,10 +367,18 @@ int main(int argc, char* argv[]) {
     Utils::PrintSuccess("Running with administrator privileges.");
     Utils::LogAction("SESSION_START", "Debloat v" + Utils::GetVersion());
 
+    // Enable auto-yes for all AskYesNo calls (managers, version guard, etc.)
+    // so that --yes propagates to confirmation prompts deep in the action
+    // lambdas without changing their call signatures.
+    if (autoYes) {
+        Utils::SetAutoYes(true);
+    }
+
     // -- Windows 11 version guard -------------------------------------------
     // The tool is designed for Windows 11. If it detects a non-Windows-11 OS
     // (build < 22000), it warns the user and asks for confirmation before
     // proceeding, since tweaks may not apply or may have unintended effects.
+    // With --yes, AskYesNo auto-confirms so the guard never blocks scripting.
     if (!Utils::IsWindows11()) {
         std::string ver = Utils::GetWindowsVersionString();
         Utils::PrintWarning("========================================================");
@@ -259,6 +391,15 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         Utils::LogAction("VERSION_OVERRIDE", "Running on non-Windows-11 OS, user confirmed");
+    }
+
+    // Non-interactive execution: --apply or --revert runs a single menu
+    // option and exits, skipping the interactive menu loop entirely.
+    if (nonInteractive) {
+        int exitCode = RunNonInteractive(applyOption);
+        Utils::LogAction("CLI_EXIT", "exit code " + std::to_string(exitCode));
+        Utils::LogAction("SESSION_END", "Debloat tool exited (non-interactive)");
+        return exitCode;
     }
 
     while (true) {

@@ -78,8 +78,54 @@ Output: `build\Release\Debloat.exe`
 | `--version` | `-V` | Print version and exit (no elevation required) |
 | `--help` | `-h` | Print usage and menu options (no elevation required) |
 | `--no-banner` | `-q` | Skip animated banner for scripted/automated use |
+| `--yes` | `-y` | Auto-confirm all prompts (required for non-interactive use) |
+| `--apply <N>` | `-a <N>` | Run menu option N non-interactively and exit |
+| `--revert <target>` | | Run revert by name: `hosts`\|`tasks`\|`services`\|`registry`\|`perf` |
 
 `--version` and `--help` exit before the UAC elevation check, so non-admin users can query the binary without being prompted for admin rights. `--no-banner` skips the animated banner but still enters the interactive menu (elevation still required).
+
+`--apply` and `--revert` enable non-interactive execution for scripting, Group Policy deployment, MDM, or unattended setup. Both require elevation (run as administrator) and both skip the banner and menu loop entirely — the specified action runs once and the process exits. Exit code `0` indicates success; `1` indicates failure or invalid arguments. Every run is recorded in the audit log at `%ProgramData%\Debloat\debloat.log`, including the exit code.
+
+When `--apply` or `--revert` is used without `--yes` and stdin is not a TTY (i.e. input is piped or redirected), the tool refuses to run with an error: *"Non-interactive mode requires --yes to confirm destructive actions."* This prevents accidental destructive operations from a script that forgot to add `--yes`. In an interactive terminal (TTY), `--apply` without `--yes` still prompts for confirmation normally.
+
+#### Scripting
+
+```bat
+:: Create a System Restore Point
+Debloat.exe --apply 9 --yes
+
+:: Full debloat — unattended, no banner
+Debloat.exe --apply 13 --yes --no-banner
+
+:: Unblock telemetry domains (revert hosts block)
+Debloat.exe --revert hosts --yes
+
+:: Revert all scheduled tasks
+Debloat.exe --revert tasks --yes
+
+:: Revert telemetry services
+Debloat.exe --revert services --yes
+
+:: Undo registry tweaks
+Debloat.exe --revert registry --yes
+
+:: Undo performance tweaks (hibernation, fast startup, power plan)
+Debloat.exe --revert perf --yes
+
+:: Check exit code in a batch script
+Debloat.exe --apply 13 --yes --no-banner
+if %ERRORLEVEL% neq 0 echo Debloat failed - check debloat.log
+```
+
+**`--revert` target reference:**
+
+| Target | Menu option | What it does |
+|--------|-------------|-------------|
+| `hosts` | 11 | Unblock telemetry domains in the hosts file |
+| `tasks` | 12 | Re-enable disabled scheduled telemetry tasks |
+| `services` | 14 | Re-enable disabled telemetry services (from backup) |
+| `registry` | 15 | Undo registry tweaks (from backup) |
+| `perf` | 16 | Undo performance tweaks (hibernation, fast startup, power plan) |
 
 ## What Stays Untouched
 

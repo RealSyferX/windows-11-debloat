@@ -47,6 +47,11 @@ namespace Utils {
     // Prompts the user with a yes/no question. Defaults to No (safe default)
     // on empty input or EOF. Requires explicit 'y' or 'Y' to confirm.
     bool AskYesNo(const std::string& prompt);
+    // When set to true, AskYesNo() auto-confirms (returns true) without
+    // reading stdin. Enabled by the --yes/-y CLI flag for non-interactive
+    // mode so that confirmation prompts deep inside manager code are
+    // satisfied without changing their call signatures.
+    void SetAutoYes(bool enabled);
     std::wstring StringToWide(const std::string& s);
     std::string WideToString(const std::wstring& ws);
     bool CreateRestorePoint();

@@ -9,6 +9,10 @@
 
 namespace Utils {
 
+// When true, AskYesNo() auto-confirms (returns true) without reading stdin.
+// Set by SetAutoYes(true) from the --yes/-y CLI flag for non-interactive mode.
+static bool g_autoYes = false;
+
 bool IsElevated() {
     BOOL ret = FALSE;
     HANDLE hToken = NULL;
@@ -302,7 +306,15 @@ void PrintPsResult(const PowerShellResult& r,
     else      PrintError(errorMsg);
 }
 
+void SetAutoYes(bool enabled) {
+    g_autoYes = enabled;
+}
+
 bool AskYesNo(const std::string& prompt) {
+    if (g_autoYes) {
+        std::cout << prompt << " (y/N): y\n";
+        return true;
+    }
     std::cout << prompt << " (y/N): ";
     std::string in;
     std::getline(std::cin, in);
