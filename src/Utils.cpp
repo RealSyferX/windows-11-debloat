@@ -362,6 +362,106 @@ std::string GetVersion() {
     return DEBLOAT_VERSION;
 }
 
+// -- Windows version detection ----------------------------------------------
+//
+// Reads values from HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion to
+// determine the OS version. Windows 11 is identified by a build number >=
+// 22000 (the first Windows 11 build was 22000.1; Windows 10 builds top out
+// around 1904x). The registry approach requires no extra linkage beyond
+// advapi32 (already linked) and avoids the deprecated GetVersionExW API,
+// which is manifest-bound to return compatibility-shim values on modern
+// Windows.
+
+// Reads a REG_SZ value from the Windows NT CurrentVersion key. Returns the
+// value as a UTF-8 string, or an empty string if the value is missing or
+// cannot be read. File-local helper (not part of the Utils public API).
+static std::string ReadCurrentVersionString(const wchar_t* valueName) {
+    wchar_t buf[256];
+    DWORD sz = sizeof(buf);   // bytes, including space for the null terminator
+    LONG r = RegGetValueW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+        valueName, RRF_RT_REG_SZ, NULL, buf, &sz);
+    if (r != ERROR_SUCCESS)
+        return "";
+    // RegGetValueW includes the terminating null in sz. Exclude it so
+    // WideToString produces a clean string with no embedded null.
+    DWORD wlen = static_cast<DWORD>(sz / sizeof(wchar_t));
+    if (wlen > 0 && buf[wlen - 1] == L'\0')
+        --wlen;
+    return WideToString(std::wstring(buf, wlen));
+}
+
+// Reads a REG_DWORD value from the Windows NT CurrentVersion key. Returns
+// false if the value is missing or cannot be read. File-local helper.
+static bool ReadCurrentVersionDword(const wchar_t* valueName, DWORD& out) {
+    DWORD data = 0;
+    DWORD sz = sizeof(data);
+    LONG r = RegGetValueW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+        valueName, RRF_RT_DWORD, NULL, &data, &sz);
+    if (r != ERROR_SUCCESS)
+        return false;
+    out = data;
+    return true;
+}
+
+int ParseBuildNumber(const std::string& buildStr) {
+    if (buildStr.empty())
+        return 0;
+    int result = 0;
+    for (char c : buildStr) {
+        if (c < '0' || c > '9')
+            break;   // stop at the first non-digit (e.g. '.' in "22631.1")
+        result = result * 10 + (c - '0');
+    }
+    return result;
+}
+
+bool IsWindows11() {
+    std::string buildStr = ReadCurrentVersionString(L"CurrentBuild");
+    if (buildStr.empty())
+        return true;   // fail-open: don't block users on a registry edge case
+    int build = ParseBuildNumber(buildStr);
+    if (build == 0)
+        return true;   // unparseable build -- fail-open
+    return build >= 22000;
+}
+
+std::string GetWindowsVersionString() {
+    std::string buildStr = ReadCurrentVersionString(L"CurrentBuild");
+    int build = ParseBuildNumber(buildStr);
+
+    // UBR (Update Build Revision) is a DWORD appended after a dot, e.g.
+    // "22631.4317". It is optional -- not all systems expose it -- so only
+    // append it when the read succeeds.
+    DWORD ubr = 0;
+    bool hasUbr = ReadCurrentVersionDword(L"UBR", ubr);
+
+    // Determine the OS display name. The ProductName registry value is
+    // unreliable on Windows 11 (it often still reads "Windows 10"), so we
+    // derive the major name from the build number when possible and fall
+    // back to ProductName only when the build number is unavailable.
+    std::string name;
+    if (build >= 22000) {
+        name = "Windows 11";
+    } else if (build > 0) {
+        name = "Windows 10";
+    } else {
+        name = ReadCurrentVersionString(L"ProductName");
+        if (name.empty())
+            name = "Windows";
+    }
+
+    std::string result = name;
+    if (!buildStr.empty()) {
+        result += " (build " + buildStr;
+        if (hasUbr)
+            result += "." + std::to_string(ubr);
+        result += ")";
+    }
+    return result;
+}
+
 bool CreateSecureDirectory(const std::wstring& path) {
     // SDDL: D: = DACL, P = Protected (do NOT inherit from parent). This is the
     // key part that prevents %ProgramData%'s loose permissions (which grant

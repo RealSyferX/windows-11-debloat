@@ -54,6 +54,21 @@ namespace Utils {
     // Returns the version string (from DEBLOAT_VERSION macro).
     std::string GetVersion();
 
+    // Returns true if the current OS is Windows 11 (build >= 22000).
+    // Reads CurrentBuild from the registry; fails open (returns true) if the
+    // registry read fails so an edge case never blocks a legitimate user.
+    bool IsWindows11();
+
+    // Returns a human-readable Windows version string, e.g.
+    // "Windows 11 (build 22631)" or "Windows 10 (build 19045)".
+    // Falls back gracefully if registry values are missing.
+    std::string GetWindowsVersionString();
+
+    // Parses a Windows build-number string (e.g. "22631") to an integer.
+    // Pure function (no registry access) so it can be unit tested.
+    // Returns 0 if the string is empty or starts with a non-digit.
+    int ParseBuildNumber(const std::string& buildStr);
+
     // Creates a directory with Full Control for Administrators and SYSTEM only.
     // If the directory already exists, applies the restrictive ACL to it.
     // This prevents non-admin users from tampering with backup files that

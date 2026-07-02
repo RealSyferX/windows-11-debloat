@@ -683,6 +683,49 @@ static void TestParsePowerPlanGuid() {
     }
 }
 
+// -- Utils::ParseBuildNumber ---------------------------------------------------
+// Tests the pure helper that converts a Windows build-number string to an
+// integer. Windows 11 builds start at 22000; anything below is Windows 10
+// or earlier. Extracted from IsWindows11() so the parsing logic can be unit
+// tested without touching the registry.
+
+static void TestParseBuildNumber() {
+    // Typical Windows 11 builds (>= 22000).
+    CHECK(Utils::ParseBuildNumber("22000") == 22000);
+    CHECK(Utils::ParseBuildNumber("22631") == 22631);
+    CHECK(Utils::ParseBuildNumber("26100") == 26100);
+
+    // Typical Windows 10 builds (all < 22000).
+    CHECK(Utils::ParseBuildNumber("19045") == 19045);
+    CHECK(Utils::ParseBuildNumber("18363") == 18363);
+    CHECK(Utils::ParseBuildNumber("10240") == 10240);
+
+    // The boundary: 22000 is the first Windows 11 build.
+    CHECK(Utils::ParseBuildNumber("21999") == 21999);   // Win10
+    CHECK(Utils::ParseBuildNumber("22000") == 22000);   // Win11
+
+    // Empty string -> 0.
+    CHECK(Utils::ParseBuildNumber("") == 0);
+
+    // Non-numeric -> 0.
+    CHECK(Utils::ParseBuildNumber("abc") == 0);
+
+    // Leading non-digit stops parsing immediately -> 0.
+    CHECK(Utils::ParseBuildNumber("x22631") == 0);
+
+    // Trailing non-digits are ignored (e.g. if UBR is appended as "22631.1").
+    CHECK(Utils::ParseBuildNumber("22631.1") == 22631);
+
+    // Leading zeros are handled correctly.
+    CHECK(Utils::ParseBuildNumber("022631") == 22631);
+
+    // Single digit.
+    CHECK(Utils::ParseBuildNumber("5") == 5);
+
+    // Zero.
+    CHECK(Utils::ParseBuildNumber("0") == 0);
+}
+
 // -- ServiceManager backup line parsing ----------------------------------------
 // Tests the pure parsing logic extracted from EnableAll(). The backup file is
 // line-delimited ("name|startType"); ParseServiceLine turns one line into a
@@ -888,6 +931,7 @@ int main() {
     TestRootKeyValidation();
     TestPerfBackupParse();
     TestParsePowerPlanGuid();
+    TestParseBuildNumber();
     TestServiceBackupParse();
 
     if (g_failures == 0) {

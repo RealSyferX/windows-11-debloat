@@ -148,6 +148,24 @@ int main(int argc, char* argv[]) {
     Utils::PrintSuccess("Running with administrator privileges.");
     Utils::LogAction("SESSION_START", "Debloat v" + Utils::GetVersion());
 
+    // -- Windows 11 version guard -------------------------------------------
+    // The tool is designed for Windows 11. If it detects a non-Windows-11 OS
+    // (build < 22000), it warns the user and asks for confirmation before
+    // proceeding, since tweaks may not apply or may have unintended effects.
+    if (!Utils::IsWindows11()) {
+        std::string ver = Utils::GetWindowsVersionString();
+        Utils::PrintWarning("========================================================");
+        Utils::PrintWarning("  WARNING: This tool is designed for Windows 11.");
+        Utils::PrintWarning("  Detected: " + ver);
+        Utils::PrintWarning("  Some tweaks may not apply or may have unintended effects.");
+        Utils::PrintWarning("========================================================");
+        if (!Utils::AskYesNo("  Continue anyway?")) {
+            Utils::LogAction("SESSION_ABORT", "Non-Windows-11 OS detected, user declined to continue");
+            return 1;
+        }
+        Utils::LogAction("VERSION_OVERRIDE", "Running on non-Windows-11 OS, user confirmed");
+    }
+
     while (true) {
         try {
             PrintMenu();
