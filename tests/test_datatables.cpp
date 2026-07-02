@@ -25,18 +25,58 @@
 
 #include <iostream>
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-static int g_failures = 0;
+// Cumulative counters across every RUN_TEST() invocation. g_failures counts
+// individual CHECK() failures (not test functions); g_testCount / g_passCount
+// count test functions run / passed. Skipped tests (filtered out) are not
+// counted in any of these.
+static int g_failures  = 0;
+static int g_testCount = 0;
+static int g_passCount = 0;
 
+// If DEBLOAT_TEST_FILTER is set, only test functions whose stringified name
+// contains the substring are run; the rest are reported as [SKIP]. This lets
+// developers run a focused subset, e.g. `set DEBLOAT_TEST_FILTER=Hosts`.
+static bool ShouldRunTest(const char* testName) {
+    const char* filter = std::getenv("DEBLOAT_TEST_FILTER");
+    if (filter == nullptr || filter[0] == '\0')
+        return true;  // no filter -> run everything
+    return std::string(testName).find(filter) != std::string::npos;
+}
+
+// CHECK() prints the failing condition indented under the enclosing test's
+// [PASS]/[FAIL] summary line so ctest --output-on-failure reads top-to-bottom.
 #define CHECK(cond) do { \
     if (!(cond)) { \
-        std::cerr << "FAIL: " #cond " (line " << __LINE__ << ")\n"; \
+        std::cout << "  [FAIL] " #cond " (line " << __LINE__ << ")\n"; \
         ++g_failures; \
+    } \
+} while(0)
+
+// RUN_TEST() wraps one Test*() call. It snapshots the cumulative failure count
+// before invoking the test so that any new CHECK() failures are attributed to
+// this test, then prints a per-test [PASS] / [FAIL] / [SKIP] line. The
+// stringified function name (#fn) is used for both the filter match and the
+// human-readable output, so test function names double as test identifiers.
+#define RUN_TEST(fn) do { \
+    if (ShouldRunTest(#fn)) { \
+        int before = g_failures; \
+        ++g_testCount; \
+        fn(); \
+        if (g_failures > before) { \
+            std::cout << "[FAIL] " << #fn << " (" << (g_failures - before) << " failures)\n"; \
+        } else { \
+            ++g_passCount; \
+            std::cout << "[PASS] " << #fn << "\n"; \
+        } \
+    } else { \
+        std::cout << "[SKIP] " << #fn << "\n"; \
     } \
 } while(0)
 
@@ -914,31 +954,28 @@ static void TestRootKeyValidation() {
 // -- main --------------------------------------------------------------------
 
 int main() {
-    TestBloatwareList();
-    TestTelemetryServices();
-    TestScheduledTasks();
-    TestBlockedDomains();
-    TestRegistryTweaks();
-    TestEscapePsSingleQuote();
-    TestHostsRemoveBlock();
-    TestHostsHasBlock();
-    TestStringRoundTrip();
-    TestEscapeFieldRoundTrip();
-    TestHexEncodeDecodeRoundTrip();
-    TestHexDecodeMalformed();
-    TestSplitEscapedEdgeCases();
-    TestFullBackupRecordRoundTrip();
-    TestRootKeyValidation();
-    TestPerfBackupParse();
-    TestParsePowerPlanGuid();
-    TestParseBuildNumber();
-    TestServiceBackupParse();
+    RUN_TEST(TestBloatwareList);
+    RUN_TEST(TestTelemetryServices);
+    RUN_TEST(TestScheduledTasks);
+    RUN_TEST(TestBlockedDomains);
+    RUN_TEST(TestRegistryTweaks);
+    RUN_TEST(TestEscapePsSingleQuote);
+    RUN_TEST(TestHostsRemoveBlock);
+    RUN_TEST(TestHostsHasBlock);
+    RUN_TEST(TestStringRoundTrip);
+    RUN_TEST(TestEscapeFieldRoundTrip);
+    RUN_TEST(TestHexEncodeDecodeRoundTrip);
+    RUN_TEST(TestHexDecodeMalformed);
+    RUN_TEST(TestSplitEscapedEdgeCases);
+    RUN_TEST(TestFullBackupRecordRoundTrip);
+    RUN_TEST(TestRootKeyValidation);
+    RUN_TEST(TestPerfBackupParse);
+    RUN_TEST(TestParsePowerPlanGuid);
+    RUN_TEST(TestParseBuildNumber);
+    RUN_TEST(TestServiceBackupParse);
 
-    if (g_failures == 0) {
-        std::cout << "All tests passed.\n";
-        return 0;
-    } else {
-        std::cout << g_failures << " test(s) failed.\n";
-        return 1;
-    }
+    std::cout << "---\n";
+    std::cout << g_passCount << " passed, "
+              << (g_testCount - g_passCount) << " failed.\n";
+    return (g_failures == 0) ? 0 : 1;
 }

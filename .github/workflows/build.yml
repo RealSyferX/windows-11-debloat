@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
       - name: Run tests
-        run: .\build\Release\debloat_tests.exe
+        run: ctest --test-dir build --output-on-failure -C Release
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

@@ -46,15 +46,31 @@ cmake --build build --config Release
 ## Running Tests
 
 The test binary is a hand-rolled assert framework (no external test
-dependency). Build with `-DBUILD_TESTING=ON` as above, then run:
+dependency). Build with `-DBUILD_TESTING=ON` as above, then run via CTest:
+
+```bat
+ctest --test-dir build --output-on-failure -C Release
+```
+
+CTest discovers and runs the `debloat_datatables` test registered by
+`add_test()` in `CMakeLists.txt`. Each test function prints a `[PASS]` /
+`[FAIL]` / `[SKIP]` line, followed by a summary like `19 passed, 0 failed.`
+The executable exits `0` on success or `1` on failure. **All tests must pass
+before a PR can be merged.**
+
+To run a subset of tests, set the `DEBLOAT_TEST_FILTER` environment variable to
+a substring of the test function name:
+
+```bat
+set DEBLOAT_TEST_FILTER=Hosts
+ctest --test-dir build --output-on-failure -C Release
+```
+
+As a fallback, the test executable can still be invoked directly:
 
 ```bat
 .\build\Release\debloat_tests.exe
 ```
-
-The executable prints `All tests passed.` and exits `0` on success, or
-`N test(s) failed.` and exits `1` on failure. **All tests must pass before a
-PR can be merged.**
 
 The tests validate the data tables (counts, no duplicates, field validity) and
 the pure helper functions extracted from the managers (PowerShell escaping,
@@ -167,7 +183,7 @@ README.
 
 Before opening a PR, confirm:
 
-- [ ] **Tests pass** — `.\build\Release\debloat_tests.exe` exits `0`.
+- [ ] **Tests pass** — `ctest --test-dir build --output-on-failure -C Release` exits `0`.
 - [ ] **No new compiler warnings** under `/W4 /permissive- /WX`.
 - [ ] **README counts updated** if you changed any data table (see
       [Data-table update workflow](#data-table-update-workflow)).

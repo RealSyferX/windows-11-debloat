@@ -49,6 +49,11 @@ endif()
 # The test target does NOT include main.cpp (it provides its own main()).
 # Utils.cpp is included because every manager .cpp pulls in Utils.h; linking
 # it keeps the test working in both Debug and Release configurations.
+#
+# enable_testing() is called unconditionally at the top level (CMake best
+# practice) so `ctest` can discover tests whenever BUILD_TESTING registers
+# any. When BUILD_TESTING=OFF no add_test() runs, so ctest finds nothing.
+enable_testing()
 option(BUILD_TESTING "Build unit tests" OFF)
 if(BUILD_TESTING)
     add_executable(debloat_tests
@@ -65,4 +70,5 @@ if(BUILD_TESTING)
     target_compile_features(debloat_tests PRIVATE cxx_std_17)
     target_compile_definitions(debloat_tests PRIVATE DEBLOAT_VERSION="${DEBLOAT_VERSION}")
     target_link_libraries(debloat_tests PRIVATE advapi32 shell32)
+    add_test(NAME debloat_datatables COMMAND debloat_tests)
 endif()
