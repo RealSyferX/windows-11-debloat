@@ -134,18 +134,34 @@ void ServiceManager::DisableAll() {
     // to a .tmp file, then rename over the target. If the process crashes
     // mid-write, the original backup is preserved. The backup is only
     // replaced if the full write succeeds. EnableAll() reads this back.
+    //
+    // The backup begins with an integrity header (DEBLOAT_BACKUP|ver|count|type)
+    // so Revert() can detect truncation or corruption upfront. The count must
+    // be accurate, so entries are collected first, then the header is written
+    // with the real count, then the data lines.
     std::wstring backupPath = Utils::GetDebloatDataDir() + L"service_backup.txt";
     bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
+        // Collect backup entries first so the header entry count is exact.
+        // Each service that exists and has a queryable start type produces one
+        // entry; services that are missing or unqueryable produce no line
+        // (same behaviour as before — the count simply reflects reality).
+        struct Entry { std::string name; DWORD startType; };
+        std::vector<Entry> entries;
         for (const auto& s : GetTelemetryServices()) {
             SC_HANDLE scm, svc_h;
             if (!OpenSvc(s, SERVICE_QUERY_CONFIG, scm, svc_h))
                 continue;  // service not found — no backup line
             DWORD origStart = 0;
             if (QueryStartType(svc_h, origStart))
-                backup << Utils::WideToString(s.name) << "|" << origStart << "\n";
+                entries.push_back({ Utils::WideToString(s.name), origStart });
             CloseServiceHandle(svc_h);
             CloseServiceHandle(scm);
         }
+        // Write the integrity header first, then the data lines.
+        Utils::WriteBackupHeader(backup, "services",
+                                 static_cast<int>(entries.size()));
+        for (const auto& e : entries)
+            backup << e.name << "|" << e.startType << "\n";
         return true;
     });
     if (!backupOk)
@@ -251,9 +267,22 @@ void ServiceManager::EnableAll() {
         return;
     }
 
+    // Validate the integrity header before parsing data lines. A corrupt or
+    // truncated file is refused outright; a legacy file (pre-header format)
+    // falls back to the original line-by-line parse for backward compatibility.
+    auto header = Utils::ReadBackupHeader(fin);
+    if (!header.valid) {
+        Utils::PrintError("Backup file appears to be corrupt or is from an incompatible version. Refusing to revert to avoid partial restore.");
+        fin.close();
+        return;
+    }
+    if (header.legacy)
+        Utils::PrintWarning("Backup file predates integrity headers (v1.0.0 format). Proceeding with legacy parsing.");
+
     SC_HANDLE scm = OpenSCManagerW(NULL, NULL, SC_MANAGER_CONNECT);
     if (!scm) {
         Utils::PrintError("Failed to open Service Control Manager.");
+        fin.close();
         return;
     }
 
@@ -291,6 +320,17 @@ void ServiceManager::EnableAll() {
     }
     fin.close();
     CloseServiceHandle(scm);
+
+    // Count-mismatch warning: if the header declared N entries but we parsed
+    // fewer, some lines were malformed or the file was truncated mid-write.
+    if (!header.legacy) {
+        int parsedEntries = restored + notFound + failed;
+        if (parsedEntries != header.entryCount) {
+            Utils::PrintWarning("Backup expected " + std::to_string(header.entryCount) +
+                " entries but found " + std::to_string(parsedEntries) +
+                ". Some settings may not be restored.");
+        }
+    }
 
     std::cout << "\n  Summary: " << restored << " restored, " << notFound
               << " not found, " << failed << " failed.\n";

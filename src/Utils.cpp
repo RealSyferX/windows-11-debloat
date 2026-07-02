@@ -676,6 +676,95 @@ bool WriteBackupAtomic(const std::wstring& path,
     return true;
 }
 
+// -- Backup file integrity header ----------------------------------------------
+//
+// WriteBackupHeader / ReadBackupHeader serialize and parse the first line of
+// every backup file. The format is:
+//
+//   DEBLOAT_BACKUP|<version>|<entryCount>|<type>\n
+//
+// Revert() calls ReadBackupHeader() before parsing data lines. Three outcomes:
+//   1. valid && !legacy  — header consumed; parse the remaining data lines
+//   2. valid &&  legacy  — old-format file (no header); stream rewound to 0
+//                          so the existing line-by-line parser reads all lines
+//   3. !valid            — empty file or malformed header; refuse to revert
+
+bool WriteBackupHeader(std::ofstream& f, const std::string& type,
+                       int entryCount) {
+    f << BACKUP_MAGIC << "|" << BACKUP_VERSION << "|"
+      << entryCount << "|" << type << "\n";
+    return f.good();
+}
+
+BackupHeader ReadBackupHeader(std::ifstream& f) {
+    BackupHeader result{ false, 0, 0, false };
+
+    // Read the first line. If the file is empty or unreadable, the file is
+    // corrupt/missing — return invalid so Revert() refuses to proceed.
+    std::string line;
+    if (!std::getline(f, line))
+        return result;
+
+    // Tolerate CRLF line endings (matches the parsers in ServiceManager /
+    // TelemetryManager / PerformanceManager).
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+
+    // Check whether the first line starts with "DEBLOAT_BACKUP|". Using the
+    // magic-plus-pipe prefix (not just the bare magic) means a line like
+    // "DEBLOAT_BACKUP" with no pipe is treated as a legacy data line, not a
+    // malformed header — consistent with the spec that only lines starting
+    // with the full "DEBLOAT_BACKUP|" prefix are parsed as headers.
+    const std::string prefix = std::string(BACKUP_MAGIC) + "|";
+    if (line.rfind(prefix, 0) != 0) {
+        // First line does not start with the magic — this is a legacy backup
+        // file written before headers were introduced. Rewind so the caller's
+        // line-by-line parser sees every line (including this first one, which
+        // is real data in the legacy format).
+        f.clear();
+        f.seekg(0);
+        return { true, 0, 0, true };
+    }
+
+    // The line starts with "DEBLOAT_BACKUP|". Parse: version|count|type
+    std::string rest = line.substr(prefix.size());   // "version|count|type"
+
+    // Extract the version field (up to the first '|').
+    size_t bar1 = rest.find('|');
+    if (bar1 == std::string::npos)
+        return result;   // missing count field — malformed header
+    std::string versionStr  = rest.substr(0, bar1);
+    std::string afterVersion = rest.substr(bar1 + 1);   // "count|type"
+
+    // Extract the count field (up to the next '|', or to end-of-line if the
+    // type field is absent — type is informational and not validated here).
+    size_t bar2 = afterVersion.find('|');
+    std::string countStr = (bar2 == std::string::npos)
+        ? afterVersion
+        : afterVersion.substr(0, bar2);
+
+    // Parse version — must be a pure integer (no trailing garbage).
+    int version = 0;
+    try {
+        size_t idx = 0;
+        version = std::stoi(versionStr, &idx);
+        if (idx != versionStr.size()) return result;
+    } catch (...) {
+        return result;
+    }
+
+    // Parse count — must be a pure integer (no trailing garbage).
+    int count = 0;
+    try {
+        size_t idx = 0;
+        count = std::stoi(countStr, &idx);
+        if (idx != countStr.size()) return result;
+    } catch (...) {
+        return result;
+    }
+
+    return { true, version, count, false };
+}
+
 bool WriteFileAtomic(const std::wstring& path, const std::string& content) {
     // Construct a temp path in the same directory so the rename is atomic
     // (same volume). If the process crashes mid-write, the temp file is

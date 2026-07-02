@@ -101,6 +101,44 @@ namespace Utils {
     bool WriteBackupAtomic(const std::wstring& path,
                            const std::function<bool(std::ofstream&)>& writer);
 
+    // -- Backup file integrity header ----------------------------------------
+    // Every backup file (service_backup.txt, reg_backup.txt, perf_backup.txt)
+    // begins with a header line: "DEBLOAT_BACKUP|<version>|<count>|<type>\n".
+    // Revert() validates this header before parsing the data lines: a corrupt
+    // or truncated file is refused outright, a count mismatch produces a
+    // warning, and legacy files (written before headers were added) fall back
+    // to the original line-by-line parse for backward compatibility.
+    static constexpr const char* BACKUP_MAGIC   = "DEBLOAT_BACKUP";
+    static constexpr int         BACKUP_VERSION = 1;
+
+    // Result of ReadBackupHeader().
+    struct BackupHeader {
+        bool valid;        // false if the file is empty/unreadable or the
+                           // header line is malformed (starts with the magic
+                           // prefix but has a non-numeric version or count)
+        int  version;      // format version from the header (0 for legacy)
+        int  entryCount;   // expected number of data entries (0 for legacy)
+        bool legacy;       // true if the file predates headers (no magic line);
+                           // the stream is rewound to the start so the caller
+                           // can fall back to line-by-line parsing
+    };
+
+    // Writes the backup header line to the stream. Must be called as the first
+    // write inside the WriteBackupAtomic writer callback, before any data
+    // lines. Returns true on success.
+    bool WriteBackupHeader(std::ofstream& f, const std::string& type,
+                           int entryCount);
+
+    // Reads and validates the backup header from the stream. If the first line
+    // starts with "DEBLOAT_BACKUP|", parses version and entryCount and returns
+    // {valid=true, version, count, legacy=false}. If the first line does NOT
+    // start with the magic (legacy file), rewinds the stream to the beginning
+    // (f.clear(); f.seekg(0);) and returns {valid=true, 0, 0, legacy=true}. If
+    // the file is empty or the header line is malformed (starts with the magic
+    // prefix but has a non-numeric/missing version or count), returns
+    // {valid=false, 0, 0, legacy=false}.
+    BackupHeader ReadBackupHeader(std::ifstream& f);
+
     // Writes content to a file atomically: writes to a .tmp file in the same
     // directory, flushes/closes, then renames over the target via MoveFileExW.
     // If the process crashes mid-write, the original file is preserved.

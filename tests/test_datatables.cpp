@@ -951,6 +951,249 @@ static void TestRootKeyValidation() {
     }
 }
 
+// -- Utils::WriteBackupHeader / ReadBackupHeader --------------------------------
+// Tests the integrity header that every backup file (service_backup.txt,
+// reg_backup.txt, perf_backup.txt) now begins with. The header line format is:
+//   DEBLOAT_BACKUP|<version>|<entryCount>|<type>
+// ReadBackupHeader has three outcomes: (1) valid header parsed -> {valid, ver,
+// count, legacy=false}; (2) first line is not a header (legacy file) -> rewinds
+// the stream and returns {valid, 0, 0, legacy=true}; (3) empty file or a line
+// that starts with the magic prefix but has non-numeric/missing fields ->
+// {valid=false, 0, 0, legacy=false}. These tests cover all three paths plus a
+// round-trip with real data entries.
+
+// Helper: returns a unique temp file path for backup header tests. Uses the
+// system temp directory so tests don't litter the source tree.
+static std::wstring GetTempBackupPath() {
+    wchar_t tempDir[MAX_PATH];
+    DWORD len = GetTempPathW(MAX_PATH, tempDir);
+    if (len > 0 && len < MAX_PATH)
+        return std::wstring(tempDir) + L"debloat_header_test.txt";
+    return L"C:\\debloat_header_test.txt";
+}
+
+static void TestBackupHeaderRoundTrip() {
+    auto path = GetTempBackupPath();
+
+    // Write a header with known values.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        CHECK(f.is_open());
+        CHECK(Utils::WriteBackupHeader(f, "services", 5));
+    }
+
+    // Read it back and verify every field.
+    {
+        std::ifstream f(path, std::ios::binary);
+        CHECK(f.is_open());
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(!h.legacy);
+        CHECK(h.version == Utils::BACKUP_VERSION);
+        CHECK(h.entryCount == 5);
+    }
+
+    DeleteFileW(path.c_str());
+
+    // Round-trip with count=0 (empty backup is still a valid header).
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        CHECK(Utils::WriteBackupHeader(f, "registry", 0));
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(!h.legacy);
+        CHECK(h.version == Utils::BACKUP_VERSION);
+        CHECK(h.entryCount == 0);
+    }
+
+    DeleteFileW(path.c_str());
+}
+
+static void TestBackupHeaderMalformed() {
+    auto path = GetTempBackupPath();
+
+    // (a) Wrong magic string — does not start with "DEBLOAT_BACKUP|", so the
+    // line is treated as a legacy data line. ReadBackupHeader returns
+    // {valid=true, legacy=true} and rewinds the stream so the caller can
+    // line-parse from the beginning.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "WRONG_MAGIC|1|5|services\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(h.legacy);
+        CHECK(h.version == 0);
+        CHECK(h.entryCount == 0);
+        // Stream should be rewound — getline reads the first (data) line.
+        std::string line;
+        CHECK(std::getline(f, line));
+        CHECK(line.find("WRONG_MAGIC") != std::string::npos);
+    }
+    DeleteFileW(path.c_str());
+
+    // (b) Missing version field: starts with "DEBLOAT_BACKUP|" but the version
+    // field is empty ("DEBLOAT_BACKUP||5|services"). std::stoi("") throws ->
+    // valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP||5|services\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (c) Non-numeric count: "DEBLOAT_BACKUP|1|abc|services". std::stoi("abc")
+    // throws -> valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP|1|abc|services\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (d) Empty file — getline fails on the first read -> valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        // write nothing
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (e) Non-numeric version: "DEBLOAT_BACKUP|abc|5|services" -> valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP|abc|5|services\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (f) Magic prefix but nothing after it: "DEBLOAT_BACKUP|" — no version
+    // field, no count field -> valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP|\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (g) Trailing garbage in count: "DEBLOAT_BACKUP|1|5abc|services" — the
+    // idx != size check rejects "5abc" -> valid=false.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP|1|5abc|services\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(!h.valid);
+        CHECK(!h.legacy);
+    }
+    DeleteFileW(path.c_str());
+
+    // (h) CRLF line ending: header written with \n but file read back with a
+    // CRLF variant must still parse correctly (trailing \r is stripped).
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        f << "DEBLOAT_BACKUP|1|3|services\r\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(!h.legacy);
+        CHECK(h.version == 1);
+        CHECK(h.entryCount == 3);
+    }
+    DeleteFileW(path.c_str());
+}
+
+static void TestBackupHeaderWithEntries() {
+    auto path = GetTempBackupPath();
+
+    // Write a header + 3 service-format data lines, then read the header and
+    // parse the remaining lines with the existing ParseServiceLine helper.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        Utils::WriteBackupHeader(f, "services", 3);
+        f << "DiagTrack|2\n";
+        f << "WerSvc|3\n";
+        f << "PcaSvc|4\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(!h.legacy);
+        CHECK(h.entryCount == 3);
+
+        // The header line has been consumed — the remaining 3 lines are data.
+        int parsedCount = 0;
+        std::string line;
+        while (std::getline(f, line)) {
+            auto p = ServiceManager::ParseServiceLine(line);
+            if (p.valid) ++parsedCount;
+        }
+        CHECK(parsedCount == 3);
+    }
+    DeleteFileW(path.c_str());
+
+    // Write a header + 3 perf-format data lines, read the header, and verify
+    // the remaining content parses correctly with ParseBackup.
+    {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        Utils::WriteBackupHeader(f, "performance", 3);
+        f << "hibernation|on\n";
+        f << "hiberbootEnabled|1\n";
+        f << "powerPlan|381b4222-f694-41f0-9685-ff5bb260df2e\n";
+    }
+    {
+        std::ifstream f(path, std::ios::binary);
+        auto h = Utils::ReadBackupHeader(f);
+        CHECK(h.valid);
+        CHECK(!h.legacy);
+        CHECK(h.entryCount == 3);
+
+        // Read the remaining content and parse it.
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        auto p = PerformanceManager::ParseBackup(content);
+        CHECK(p.hibernation == "on");
+        CHECK(p.hiberbootEnabled == "1");
+        CHECK(p.powerPlan == "381b4222-f694-41f0-9685-ff5bb260df2e");
+    }
+    DeleteFileW(path.c_str());
+}
+
 // -- main --------------------------------------------------------------------
 
 int main() {
@@ -973,6 +1216,9 @@ int main() {
     RUN_TEST(TestParsePowerPlanGuid);
     RUN_TEST(TestParseBuildNumber);
     RUN_TEST(TestServiceBackupParse);
+    RUN_TEST(TestBackupHeaderRoundTrip);
+    RUN_TEST(TestBackupHeaderMalformed);
+    RUN_TEST(TestBackupHeaderWithEntries);
 
     std::cout << "---\n";
     std::cout << g_passCount << " passed, "

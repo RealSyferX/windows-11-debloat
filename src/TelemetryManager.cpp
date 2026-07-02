@@ -315,8 +315,14 @@ void TelemetryManager::ApplyAll() {
     // write to a .tmp file, then rename over the target. If the process
     // crashes mid-write, the original backup is preserved. The backup is only
     // replaced if the full write succeeds. Revert() reads this back.
+    //
+    // The backup begins with an integrity header (DEBLOAT_BACKUP|ver|count|type)
+    // so Revert() can detect truncation or corruption upfront. Every tweak in
+    // the table always produces exactly one backup line, so the count is the
+    // table size.
     std::wstring backupPath = Utils::GetDebloatDataDir() + L"reg_backup.txt";
     bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
+        Utils::WriteBackupHeader(backup, "registry", static_cast<int>(t.size()));
         for (const auto& tw : t) {
             // --- Snapshot the current value BEFORE overwriting it ------------
             // RegGetValueW opens the key read-only internally and returns the
@@ -403,6 +409,18 @@ void TelemetryManager::Revert() {
         std::cout << "  [--] No registry backup found — nothing to revert.\n";
         return;
     }
+
+    // Validate the integrity header before parsing data lines. A corrupt or
+    // truncated file is refused outright; a legacy file (pre-header format)
+    // falls back to the original line-by-line parse for backward compatibility.
+    auto header = Utils::ReadBackupHeader(fin);
+    if (!header.valid) {
+        Utils::PrintError("Backup file appears to be corrupt or is from an incompatible version. Refusing to revert to avoid partial restore.");
+        fin.close();
+        return;
+    }
+    if (header.legacy)
+        Utils::PrintWarning("Backup file predates integrity headers (v1.0.0 format). Proceeding with legacy parsing.");
 
     int restored = 0, deleted = 0, failed = 0;
     std::string line;
@@ -499,6 +517,17 @@ void TelemetryManager::Revert() {
         RegCloseKey(hKey);
     }
     fin.close();
+
+    // Count-mismatch warning: if the header declared N entries but we parsed
+    // fewer, some lines were malformed or the file was truncated mid-write.
+    if (!header.legacy) {
+        int parsedEntries = restored + deleted + failed;
+        if (parsedEntries != header.entryCount) {
+            Utils::PrintWarning("Backup expected " + std::to_string(header.entryCount) +
+                " entries but found " + std::to_string(parsedEntries) +
+                ". Some settings may not be restored.");
+        }
+    }
 
     std::cout << "\n  Summary: " << restored << " restored, " << deleted
               << " deleted, " << failed << " failed.\n";

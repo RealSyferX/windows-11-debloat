@@ -83,9 +83,14 @@ void PerformanceManager::ApplyAll() {
     // The backup is written atomically: a .tmp file is populated, then renamed
     // over the target. If the process crashes mid-write, the original backup
     // is preserved.
+    //
+    // The backup begins with an integrity header (DEBLOAT_BACKUP|ver|count|type)
+    // so Revert() can detect truncation or corruption upfront. Exactly three
+    // data lines are always written (hibernation, hiberbootEnabled, powerPlan).
     {
         std::wstring backupPath = Utils::GetDebloatDataDir() + L"perf_backup.txt";
         bool backupOk = Utils::WriteBackupAtomic(backupPath, [&](std::ofstream& backup) -> bool {
+            Utils::WriteBackupHeader(backup, "performance", 3);
             backup << "hibernation|" << (IsHibernationOn() ? "on" : "off") << "\n";
             DWORD hbVal = 0;
             if (ReadHiberbootEnabled(hbVal))
@@ -268,13 +273,41 @@ void PerformanceManager::Revert() {
         return;
     }
 
-    // Read the entire backup file and parse it with the pure helper so the
-    // parsing logic is shared with the unit tests.
+    // Validate the integrity header before parsing data lines. A corrupt or
+    // truncated file is refused outright; a legacy file (pre-header format)
+    // falls back to the original line-by-line parse for backward compatibility.
+    auto header = Utils::ReadBackupHeader(fin);
+    if (!header.valid) {
+        Utils::PrintError("Backup file appears to be corrupt or is from an incompatible version. Refusing to revert to avoid partial restore.");
+        fin.close();
+        return;
+    }
+    if (header.legacy)
+        Utils::PrintWarning("Backup file predates integrity headers (v1.0.0 format). Proceeding with legacy parsing.");
+
+    // Read the remaining content and parse it with the pure helper so the
+    // parsing logic is shared with the unit tests. For non-legacy files the
+    // header line has been consumed; for legacy files the stream was rewound
+    // to the start so all lines are data.
     std::string content((std::istreambuf_iterator<char>(fin)),
                          std::istreambuf_iterator<char>());
     fin.close();
 
     PerfBackup parsed = ParseBackup(content);
+
+    // Count-mismatch warning: if the header declared N entries but fewer were
+    // parsed, some lines were malformed or the file was truncated mid-write.
+    if (!header.legacy) {
+        int parsedCount = 0;
+        if (!parsed.hibernation.empty())       ++parsedCount;
+        if (!parsed.hiberbootEnabled.empty())  ++parsedCount;
+        if (!parsed.powerPlan.empty())         ++parsedCount;
+        if (parsedCount != header.entryCount) {
+            Utils::PrintWarning("Backup expected " + std::to_string(header.entryCount) +
+                " entries but found " + std::to_string(parsedCount) +
+                ". Some settings may not be restored.");
+        }
+    }
 
     int restored = 0, failed = 0;
 
