@@ -133,14 +133,55 @@ static const std::vector<MenuItem>& GetMenu() {
                         Utils::PrintInfo("Aborted. No changes were made.");
                     } else {
                         // Each RUN ALL step is isolated so a failure in one
-                        // manager does not skip the remaining steps.
+                        // manager does not skip the remaining steps. Between
+                        // steps, check for Ctrl+C interrupt so a long-running
+                        // operation (e.g. PerformanceManager::ApplyAll with
+                        // DISM) does not force the user to wait for all
+                        // remaining steps. The `return;` exits the RUN ALL
+                        // action lambda; the menu loop's top-of-iteration
+                        // check then logs SESSION_INTERRUPTED and breaks.
                         RunStep("Appx removal", "Appx", []{ AppxManager::RemoveAll(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after Appx (1/7 complete, 6 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after Appx (1/7 complete, 6 skipped)");
+                            return;
+                        }
                         RunStep("OneDrive removal", "OneDrive", []{ AppxManager::RemoveOneDrive(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after OneDrive (2/7 complete, 5 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after OneDrive (2/7 complete, 5 skipped)");
+                            return;
+                        }
                         RunStep("Service disable", "Services", []{ ServiceManager::DisableAll(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after Services (3/7 complete, 4 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after Services (3/7 complete, 4 skipped)");
+                            return;
+                        }
                         RunStep("Scheduled task disable", "ScheduledTasks", []{ ScheduledTaskManager::DisableAll(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after ScheduledTasks (4/7 complete, 3 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after ScheduledTasks (4/7 complete, 3 skipped)");
+                            return;
+                        }
                         RunStep("Hosts block", "Hosts", []{ HostsManager::Apply(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after Hosts (5/7 complete, 2 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after Hosts (5/7 complete, 2 skipped)");
+                            return;
+                        }
                         RunStep("Telemetry tweaks", "Telemetry", []{ TelemetryManager::ApplyAll(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after Telemetry (6/7 complete, 1 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after Telemetry (6/7 complete, 1 skipped)");
+                            return;
+                        }
                         RunStep("Performance tweaks", "Performance", []{ PerformanceManager::ApplyAll(); });
+                        if (Utils::IsShutdownRequested()) {
+                            Utils::PrintWarning("[!!] RUN ALL interrupted after Performance (7/7 complete, 0 skipped).");
+                            Utils::LogAction("RUN_ALL_INTERRUPTED", "interrupted after Performance (7/7 complete, 0 skipped)");
+                            return;
+                        }
                         Utils::LogAction("RUN_ALL", "Full debloat complete");
                         Utils::PrintSuccess("\n=== Full debloat complete. Reboot recommended. ===");
                     }
@@ -367,6 +408,10 @@ int main(int argc, char* argv[]) {
     Utils::PrintSuccess("Running with administrator privileges.");
     Utils::LogAction("SESSION_START", "Debloat v" + Utils::GetVersion());
 
+    // Install the Ctrl+C console control handler so interrupts are caught
+    // gracefully instead of hard-terminating the process mid-operation.
+    Utils::InstallShutdownHandler();
+
     // Enable auto-yes for all AskYesNo calls (managers, version guard, etc.)
     // so that --yes propagates to confirmation prompts deep in the action
     // lambdas without changing their call signatures.
@@ -397,12 +442,20 @@ int main(int argc, char* argv[]) {
     // option and exits, skipping the interactive menu loop entirely.
     if (nonInteractive) {
         int exitCode = RunNonInteractive(applyOption);
+        if (Utils::IsShutdownRequested()) {
+            Utils::LogAction("SESSION_INTERRUPTED", "Ctrl+C received (non-interactive)");
+        }
         Utils::LogAction("CLI_EXIT", "exit code " + std::to_string(exitCode));
         Utils::LogAction("SESSION_END", "Debloat tool exited (non-interactive)");
         return exitCode;
     }
 
     while (true) {
+        if (Utils::IsShutdownRequested()) {
+            Utils::PrintWarning("[!!] Session interrupted. Exiting gracefully.");
+            Utils::LogAction("SESSION_INTERRUPTED", "Ctrl+C received");
+            break;
+        }
         try {
             PrintMenu();
             std::cout << "  > ";

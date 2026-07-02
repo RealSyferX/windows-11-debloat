@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cctype>
 #include <fstream>
+#include <atomic>
 #include <shellapi.h>
 #include <sddl.h>
 #include <aclapi.h>
@@ -12,6 +13,11 @@ namespace Utils {
 // When true, AskYesNo() auto-confirms (returns true) without reading stdin.
 // Set by SetAutoYes(true) from the --yes/-y CLI flag for non-interactive mode.
 static bool g_autoYes = false;
+
+// Set to true by the console control handler when Ctrl+C (or similar) is
+// received. Checked by IsShutdownRequested() and the RunPowerShell poll loop
+// to enable graceful shutdown instead of hard termination.
+static std::atomic<bool> g_shutdownRequested{false};
 
 bool IsElevated() {
     BOOL ret = FALSE;
@@ -171,6 +177,7 @@ PowerShellResult RunPowerShell(const std::wstring& script,
     // this while still respecting the overall timeout.
     std::string rawBytes;
     bool timedOut = false;
+    bool interrupted = false;
     DWORD elapsed = 0;
     const DWORD pollMs = 200;
 
@@ -201,6 +208,20 @@ PowerShellResult RunPowerShell(const std::wstring& script,
     bool spinnerActive = false;
 
     while (true) {
+        // Check for Ctrl+C interrupt on each poll iteration so the user
+        // doesn't have to wait for the full timeout (up to 15 minutes for
+        // DISM) before the process responds. The TempFileGuard on scope
+        // exit deletes the .ps1 temp file; here we just terminate the child,
+        // drain any buffered output, and break so the handle cleanup and
+        // return path below run normally.
+        if (IsShutdownRequested()) {
+            TerminateProcess(pi.hProcess, 1);
+            WaitForSingleObject(pi.hProcess, 5000);
+            drainPipe();
+            interrupted = true;
+            break;
+        }
+
         size_t prevSize = rawBytes.size();
         drainPipe();
 
@@ -276,6 +297,10 @@ PowerShellResult RunPowerShell(const std::wstring& script,
         out = rawBytes;
     }
 
+    if (interrupted) {
+        return { false, "[!!] Interrupted by user" };
+    }
+
     if (timedOut) {
         out += "[!!] PowerShell timed out after " +
             std::to_string(timeoutMs / 1000) +
@@ -308,6 +333,30 @@ void PrintPsResult(const PowerShellResult& r,
 
 void SetAutoYes(bool enabled) {
     g_autoYes = enabled;
+}
+
+// Console control handler: called by Windows on a separate thread when Ctrl+C,
+// Ctrl+Break, logoff, or shutdown events are received. On the first event, sets
+// the shutdown flag and returns TRUE so the default hard-terminate handler is
+// suppressed — long-running operations (RunPowerShell poll loop, RUN ALL steps,
+// menu loop) check IsShutdownRequested() and exit gracefully. On a subsequent
+// event, returns FALSE so the default handler runs (hard terminate), giving the
+// user an escape if graceful shutdown is stuck.
+static BOOL WINAPI ConsoleCtrlHandler(DWORD) {
+    if (!g_shutdownRequested.exchange(true)) {
+        PrintWarning(
+            "\n[!!] Interrupt received. Finishing current step and exiting gracefully...");
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void InstallShutdownHandler() {
+    SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
+}
+
+bool IsShutdownRequested() {
+    return g_shutdownRequested.load();
 }
 
 bool AskYesNo(const std::string& prompt) {

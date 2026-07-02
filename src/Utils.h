@@ -106,4 +106,17 @@ namespace Utils {
     // If the process crashes mid-write, the original file is preserved.
     // Returns true on success, false on failure (logs error via PrintError).
     bool WriteFileAtomic(const std::wstring& path, const std::string& content);
+
+    // Installs a SetConsoleCtrlHandler that catches Ctrl+C (and other console
+    // control events) and sets an internal shutdown flag. Subsequent calls to
+    // IsShutdownRequested() return true, allowing long-running operations
+    // (RunPowerShell poll loop, RUN ALL steps, menu loop) to exit gracefully
+    // — logging SESSION_INTERRUPTED, cleaning up temp files, and reaching
+    // SESSION_END logging. A second Ctrl+C falls back to the default handler
+    // (hard terminate).
+    void InstallShutdownHandler();
+
+    // Returns true if a console control event (Ctrl+C, Ctrl+Break, logoff,
+    // shutdown) was received after InstallShutdownHandler() was called.
+    bool IsShutdownRequested();
 }
